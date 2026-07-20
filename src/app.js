@@ -16,8 +16,8 @@ const LOCAL_USERNAME = "trata.admin";
 const LOCAL_PASSWORD = "trata@2026";
 
 const state = {
-  route: "dashboard",
-  dark: false,
+  route: "home",
+  dark: localStorage.getItem("trataTheme") !== "light",
   loggedIn: localStorage.getItem("trataOAuth") === "connected",
   keyVisible: false,
   suspicious: false,
@@ -53,6 +53,7 @@ function fileTime(date) {
 const endTime = floorToTen(new Date());
 const timeline = Array.from({ length: 7 }, (_, index) => new Date(endTime.getTime() - (6 - index) * 10 * 60 * 1000));
 const nextSuspiciousTime = new Date(endTime.getTime() + 10 * 60 * 1000);
+const startTime = new Date(endTime.getTime() - 60 * 60 * 1000);
 
 const packets = timeline.map((time, index) => ({
   timestamp: displayTime(time),
@@ -82,19 +83,36 @@ const logs = timeline.map((time, index) => ({
   intel: "The process behaviour is consistent with administrative baseline."
 }));
 
-const files = Array.from({ length: 7 }, (_, index) => {
-  const time = new Date(endTime.getTime() - Math.floor(Math.random() * 60) * 60 * 1000);
+const fileTemplates = [
+  ["Policy export", "/var/log/trata/policy.json", "policy-sync", "48 KB", "No", "No"],
+  ["Collector cache", "/opt/trata/cache/state.db", "trata-collector", "19 MB", "No", "No"],
+  ["Signed DLL scan", "/usr/lib/security/auth.dll", "yara-scan", "276 KB", "Yes", "No"],
+  ["Audit archive", "/var/audit/hourly.tar", "auditd", "82 MB", "No", "No"],
+  ["Config backup", "/etc/trata/backup.yml", "backup-agent", "11 KB", "No", "No"],
+  ["Certificate bundle", "/etc/ssl/certs/ngoc.pem", "cert-watch", "6 KB", "No", "No"],
+  ["Service manifest", "/opt/trata/service.toml", "systemd", "4 KB", "Yes", "Yes"],
+  ["Ruleset snapshot", "/etc/trata/rules/current.sig", "policy-sync", "91 KB", "No", "No"],
+  ["IOC cache refresh", "/opt/trata/intel/ioc-cache.db", "trata-collector", "7 MB", "No", "No"],
+  ["Quarantine index", "/var/lib/trata/quarantine.idx", "yara-scan", "33 KB", "No", "No"],
+  ["Proxy allowlist sync", "/etc/trata/proxy/allowlist.yml", "policy-sync", "9 KB", "No", "No"],
+  ["Service health dump", "/var/log/trata/health.json", "systemd", "14 KB", "No", "No"]
+];
+
+const fileOffsets = [0, 4, 9, 13, 18, 24, 31, 37, 43, 48, 54, 59];
+const files = fileOffsets.map((offset, index) => {
+  const time = new Date(startTime.getTime() + offset * 60 * 1000);
+  const [event, location, parentProcess, size, executable, running] = fileTemplates[index];
   return {
     timestamp: displayTime(time),
     verdict: "Normal",
-    event: ["Policy export", "Collector cache", "Signed DLL scan", "Audit archive", "Config backup", "Certificate bundle", "Service manifest"][index],
-    packets: 202 + index * 14,
-    location: ["/var/log/trata/policy.json", "/opt/trata/cache/state.db", "/usr/lib/security/auth.dll", "/var/audit/hourly.tar", "/etc/trata/backup.yml", "/etc/ssl/certs/ngoc.pem", "/opt/trata/service.toml"][index],
-    parentProcess: ["policy-sync", "trata-collector", "yara-scan", "auditd", "backup-agent", "cert-watch", "systemd"][index],
-    size: ["48 KB", "19 MB", "276 KB", "82 MB", "11 KB", "6 KB", "4 KB"][index],
+    event,
+    packets: 202 + index * 9,
+    location,
+    parentProcess,
+    size,
     yara: "No YARA attack identified",
-    executable: index === 2 || index === 6 ? "Yes" : "No",
-    running: index === 6 ? "Yes" : "No",
+    executable,
+    running,
     intel: "File activity is expected for the host role and maintenance window."
   };
 });
@@ -136,8 +154,8 @@ function badge(value) {
 }
 
 function routeTo(route) {
-  const cleanRoute = (route || "dashboard").split("?")[0];
-  state.route = $(`[data-page="${cleanRoute}"]`) ? cleanRoute : "dashboard";
+  const cleanRoute = (route || "home").split("?")[0];
+  state.route = $(`[data-page="${cleanRoute}"]`) ? cleanRoute : "home";
   $$(".page").forEach((page) => page.classList.toggle("active", page.dataset.page === state.route));
   $$(".nav a, .brand, .profile-card").forEach((link) => link.classList.toggle("active", link.dataset.route === state.route));
   history.replaceState(null, "", `#${state.route}`);
@@ -339,6 +357,7 @@ function bindEvents() {
   $("#themeToggle").addEventListener("click", () => {
     state.dark = !state.dark;
     document.body.classList.toggle("dark", state.dark);
+    localStorage.setItem("trataTheme", state.dark ? "dark" : "light");
     $("#themeToggle").textContent = state.dark ? "Light mode" : "Dark mode";
   });
   [["packetSearch", "packets", packets, "packetBody", "packetHead"], ["logSearch", "logs", logs, "logBody", "logHead"], ["fileSearch", "files", files, "fileBody", "fileHead"]].forEach(([input, kind, rows, body, head]) => {
@@ -447,7 +466,7 @@ function bindEvents() {
     $("#chatInput").value = "";
     setTimeout(() => addChat(answer(text)), 250);
   });
-  addEventListener("hashchange", () => routeTo(location.hash.replace("#", "") || "dashboard"));
+  addEventListener("hashchange", () => routeTo(location.hash.replace("#", "") || "home"));
 }
 
 function startHeroCanvas() {
@@ -580,7 +599,9 @@ function startBehaviourGraph() {
 }
 
 function init() {
-  routeTo(location.hash.replace("#", "") || "dashboard");
+  document.body.classList.toggle("dark", state.dark);
+  $("#themeToggle").textContent = state.dark ? "Light mode" : "Dark mode";
+  routeTo(location.hash.replace("#", "") || "home");
   renderAll();
   bindEvents();
   addChat("Current one-hour window is normal. I will flag the next suspicious window when it arrives.");

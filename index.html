@@ -11,7 +11,7 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="/src/styles.css?v=8" />
   </head>
-  <body>
+  <body class="dark">
     <div id="loader" class="loader">
       <div class="loader-grid"></div>
       <div class="loader-core">
@@ -21,9 +21,11 @@
       </div>
     </div>
 
+    <div class="global-hero-bg"><canvas id="heroGraph"></canvas></div>
+
     <div class="app">
       <aside class="sidebar">
-        <a class="brand" href="#dashboard" data-route="dashboard">
+        <a class="brand" href="#home" data-route="home">
           <span class="brand-mark">त्र</span>
           <span><b>TRATA</b><small>त्राता Cyber Resilience</small></span>
         </a>
@@ -45,9 +47,8 @@
       </aside>
 
       <main id="top">
-        <section class="page active" id="page-dashboard" data-page="dashboard">
+        <section class="page active" id="page-home" data-page="home">
           <header class="landing">
-            <div class="hero-bg"><canvas id="heroGraph"></canvas></div>
             <div class="landing-copy">
               <span class="kicker">Threat Response and Tactical Assessment</span>
               <h1>Cyber resilience command console for critical infrastructure.</h1>
@@ -62,13 +63,12 @@
               </div>
             </div>
           </header>
+        </section>
 
+        <section class="page" id="page-dashboard" data-page="dashboard">
           <section class="content">
             <div class="page-head">
               <div><span class="kicker">Dashboard</span><h2>Operational posture</h2></div>
-              <div class="toolbar">
-                <button id="themeToggle" class="text-button">Dark mode</button>
-              </div>
             </div>
             <div class="score-grid">
               <article class="score-card"><span>YARA confidence</span><strong>94</strong><div class="bar"><i style="width:94%"></i></div><small>No malicious file match in the current hour.</small></article>
@@ -158,6 +158,8 @@
         </section>
       </main>
     </div>
+
+    <button id="themeToggle" class="text-button global-theme-toggle">Light mode</button>
 
     <section id="chatWidget" class="chat-widget">
       <button id="chatToggle" class="chat-toggle">Analyst</button>
