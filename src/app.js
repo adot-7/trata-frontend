@@ -1,563 +1,594 @@
-const palette = {
-  ice: "#DCEAF7",
-  steel: "#4A74A7",
-  navy: "#142A44",
-  night: "#081426",
-  cyan: "#68E1FD",
-  green: "#58D68D",
-  red: "#FF6B6B",
-  amber: "#F6C85F"
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+const profile = {
+  name: "Aarav Menon",
+  role: "Incident Commander",
+  organization: "National Grid Operations Centre",
+  team: "SOC Response Cell",
+  email: "aarav.menon@ngoc.gov.in",
+  device: "NGOC-SOC-EDGE-07",
+  apiKey: "trata_live_8K9X_Q2N4_P7RM"
 };
 
-const fallback = {
-  profile: {
-    name: "Aarav Menon",
-    organisation: "National Grid Operations Centre",
-    role: "Incident Commander",
-    backendUrl: "http://localhost:8080"
-  },
-  system: {
-    device: "NGOC-SOC-EDGE-07",
-    ip: "10.24.18.77",
-    os: "Ubuntu 24.04 LTS",
-    storage: "1.8 TB NVMe, 64% used",
-    ram: "64 GB DDR5, 41% used",
-    network: "Zeek sensor on VLAN-17, 1.4 Gbps observed",
-    baseline: "Behaviour profile stable, 97.2% confidence",
-    collector: "Endpoint collector v2.6.1, signed and healthy"
-  },
-  dashboard: {
-    scores: { yara: 91, sigma: 84, cve: 72, coverage: 88 },
-    attacks: [
-      ["Credential access", 17],
-      ["Lateral movement", 11],
-      ["Command and control", 8],
-      ["Discovery", 15],
-      ["Data staging", 5]
-    ],
-    traffic: [42, 48, 45, 54, 88, 61, 57, 122, 70, 66, 55, 49, 93, 110, 63, 58, 52, 45, 79, 86, 120, 72, 61, 50, 44, 76, 98, 69]
-  },
-  packets: [
-    ["20:42:11", "13s", "Attacked", "C2 beacon over HTTPS", "185.199.108.153", "Blocked"],
-    ["20:39:08", "31s", "Non attacked", "Routine DNS resolution", "10.24.18.41", "Allowed"],
-    ["20:35:56", "48s", "Attacked", "SMB lateral movement attempt", "10.24.31.19", "Quarantined"],
-    ["20:31:24", "9s", "Attacked", "Port scan against OT subnet", "45.83.64.21", "Blocked"],
-    ["20:28:43", "64s", "Non attacked", "Backup replication flow", "10.24.50.12", "Allowed"]
-  ],
-  logs: [
-    ["20:42:09", "6s", "Attacked", "Suspicious PowerShell encoded command", "10.24.18.77", "Sigma: win_ps_encoded"],
-    ["20:40:17", "22s", "Attacked", "New service created remotely", "10.24.31.19", "Sigma: remote_service_creation"],
-    ["20:36:55", "4s", "Non attacked", "Admin console login with MFA", "10.24.12.8", "Sigma: verified_admin_login"],
-    ["20:34:26", "16s", "Attacked", "Failed Kerberos pre-auth burst", "10.24.18.33", "Sigma: kerberos_spray"],
-    ["20:29:01", "11s", "Attacked", "LSASS handle request anomaly", "10.24.18.77", "Sigma: credential_dumping"]
-  ],
-  files: [
-    ["20:41:58", "Trojanized scheduler DLL", "Resolved", "T1053.005", "YARA: apt_scheduler_loader"],
-    ["20:37:20", "Packed executable in temp share", "Contained", "T1027", "YARA: upx_loader_entropy"],
-    ["20:33:05", "Mimikatz signature fragment", "Resolved", "T1003.001", "YARA: credential_dump_tooling"],
-    ["20:25:46", "Unsigned driver dropper", "Review", "T1068", "YARA: kernel_dropper_india_cni"],
-    ["20:20:14", "Benign policy export", "Clean", "T1082", "YARA: no_match"]
-  ],
-  intel: [
-    ["APT mapping", "T1021.002", "Remote Services: SMB Admin Shares", "Matches lateral movement from edge workstation to file server."],
-    ["CVE feed", "CVE-2025-53770", "SharePoint deserialization exposure", "Public exploit pressure high, patch window recommended tonight."],
-    ["CERT-In", "CIAD-2026-0718", "Government portal credential harvesting", "Indicators overlap with blocked IP 185.199.108.153."],
-    ["Prediction", "T1041", "Exfiltration over C2 channel", "Likely next move if data staging is not interrupted."],
-    ["KVE", "CVE-2024-3094", "Supply-chain backdoor watch", "No active hit, retained due to critical asset class."]
-  ],
+const GOOGLE_CLIENT_ID = "";
+const LOCAL_USERNAME = "trata.admin";
+const LOCAL_PASSWORD = "trata@2026";
+
+const state = {
+  route: "dashboard",
+  dark: false,
+  loggedIn: localStorage.getItem("trataOAuth") === "connected",
+  keyVisible: false,
+  suspicious: false,
+  selected: { packets: 0, logs: 0, files: 0 },
+  graphResize: null,
   proxy: [
-    { ip: "185.199.108.153", url: "cdn-update-check.net", status: "Blocked", attacks: 7, reason: "C2 beacon and CERT-In indicator match" },
-    { ip: "45.83.64.21", url: "scan-gw.su", status: "Blocked", attacks: 3, reason: "Repeated OT subnet reconnaissance" },
-    { ip: "10.24.50.12", url: "backup-ngoc.local", status: "Allowed", attacks: 0, reason: "Signed backup replication path" },
-    { ip: "103.27.9.44", url: "exam-data-sync.gov.in", status: "Allowed", attacks: 0, reason: "Mutual TLS verified partner endpoint" }
-  ],
-  playbook: [
-    ["Isolate endpoint NGOC-SOC-EDGE-07", "Ready", "Human gate not required, blast radius is single workstation."],
-    ["Block 185.199.108.153 at proxy and firewall", "Queued", "Correlated with C2 beacon and CERT-In advisory."],
-    ["Revoke stale service credential svc_backup_legacy", "Ready", "Observed in failed Kerberos spray pattern."],
-    ["Snapshot VM FILE-SRV-03", "Waiting", "Requires storage approval for production tier."]
-  ],
-  assets: [
-    ["SP-CBSE-01", "High", "Public SharePoint service, 18,240 daily users, patch window pending."],
-    ["FILE-SRV-03", "High", "Exam archive share with unusual SMB admin probing from VLAN-17."],
-    ["OT-GW-12", "Medium", "Substation gateway, protected by proxy allowlist and read-only telemetry."],
-    ["IDP-PRIMARY", "Medium", "Identity provider, Kerberos spray controls enabled and MFA healthy."]
-  ],
-  vulnerabilities: [
-    ["CVE-2025-53770", "Critical", "Patch SP-CBSE-01, public exploit pressure and exposed service path."],
-    ["CVE-2024-3094", "High", "Verify package provenance on Linux collector build hosts."],
-    ["CVE-2026-21412", "High", "Rotate service account token used by legacy backup connector."],
-    ["CVE-2025-29824", "Medium", "Schedule kernel patch on operator workstations within 72 hours."]
-  ],
-  assurance: [
-    ["Audit trail", "Enabled", "Every automated action is signed with operator, policy, and evidence hash."],
-    ["Human gates", "Active", "Production-tier snapshots and credential revocations require approval."],
-    ["Data retention", "365 days", "Packet metadata, Sigma matches, YARA hits, and proxy decisions retained."],
-    ["Compliance", "Aligned", "CERT-In incident reporting package can be exported from current case."]
+    { ip: "10.24.50.12", status: "Allowed", reason: "Signed backup replication endpoint", suggested: false },
+    { ip: "103.27.9.44", status: "Allowed", reason: "Mutual TLS partner endpoint", suggested: false },
+    { ip: "185.199.108.153", status: "Blocked", reason: "Historical C2 indicator, retained policy", suggested: false },
+    { ip: "45.83.64.21", status: "Blocked", reason: "Historical reconnaissance source", suggested: false }
   ]
 };
 
-const auditTemplates = [
-  ["HIGH", "Sigma rule remote_service_creation fired on 10.24.31.19", "Mapped to T1569.002, containment queue updated."],
-  ["MED", "Zeek observed JA3 hash drift from NGOC-SOC-EDGE-07", "Baseline deviation 4.8 sigma over 12-minute window."],
-  ["LOW", "YARA scan completed on shared drive segment FIN-02", "No malicious file writes in the last sweep."],
-  ["HIGH", "Proxy denied outbound flow to 185.199.108.153", "Prior attack history confirmed, firewall rule retained."],
-  ["MED", "CVE pressure increased for SharePoint asset SP-CBSE-01", "Exploitability raised due to public PoC chatter."],
-  ["INFO", "Digital twin simulation completed for lateral movement path", "Best containment point is VLAN-17 egress control."],
-  ["HIGH", "Kerberos pre-auth failures crossed spray threshold", "Credential revocation playbook prepared for svc_backup_legacy."],
-  ["INFO", "CERT-In advisory correlation refreshed", "Two indicators overlap with current packet history."]
-];
-
-const tableConfig = {
-  packets: ["Timestamp", "Duration", "Verdict", "Attack", "IP", "Action"],
-  logs: ["Timestamp", "Duration", "Verdict", "Signal", "IP", "Sigma"],
-  files: ["Timestamp", "File event", "State", "MITRE ATT&CK", "YARA"],
-  intel: ["Source", "Reference", "Finding", "Detail"]
-};
-
-const state = {
-  data: structuredClone(fallback),
-  currentTable: "packets",
-  auditPaused: false,
-  auditIndex: 0,
-  proxy: structuredClone(fallback.proxy),
-  selectedRow: fallback.packets[0]
-};
-
-const $ = (selector) => document.querySelector(selector);
-
-if ("scrollRestoration" in history) {
-  history.scrollRestoration = "manual";
+function floorToTen(date) {
+  const copy = new Date(date);
+  copy.setSeconds(0, 0);
+  copy.setMinutes(Math.floor(copy.getMinutes() / 10) * 10);
+  return copy;
 }
 
-function forceTop() {
-  if (location.hash && location.hash !== "#top") {
-    history.replaceState(null, "", location.pathname + location.search);
-  }
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+function displayTime(date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fileTime(date) {
+  return `${pad(date.getDate())}_${pad(date.getMonth() + 1)}_${String(date.getFullYear()).slice(2)}_${pad(date.getHours())}_${pad(date.getMinutes())}`;
+}
+
+const endTime = floorToTen(new Date());
+const timeline = Array.from({ length: 7 }, (_, index) => new Date(endTime.getTime() - (6 - index) * 10 * 60 * 1000));
+const nextSuspiciousTime = new Date(endTime.getTime() + 10 * 60 * 1000);
+
+const packets = timeline.map((time, index) => ({
+  timestamp: displayTime(time),
+  verdict: "Normal",
+  event: ["Routine HTTPS session", "DNS resolver exchange", "Backup control heartbeat", "Identity token validation", "Policy sync", "Database health check", "Zeek flow rollover"][index],
+  packets: 206 + index * 13,
+  duration: `${24 + index * 3}s`,
+  sourceIp: `10.24.${18 + index}.${40 + index}`,
+  sourcePort: 42000 + index * 137,
+  protocol: index % 2 ? "TCP" : "TLS",
+  attackType: "None",
+  transferred: 206 + index * 13,
+  intel: "Matches the normal baseline for the current 10-minute window."
+}));
+
+const logs = timeline.map((time, index) => ({
+  timestamp: displayTime(time),
+  verdict: "Normal",
+  event: ["Service heartbeat", "MFA policy refresh", "Kerberos ticket renewal", "Collector health check", "Admin console read", "Firewall policy checksum", "Scheduled audit close"][index],
+  packets: 214 + index * 11,
+  processId: 3180 + index * 37,
+  generatedTimestamp: displayTime(time),
+  generatedBy: ["systemd", "trata-collector", "krb5kdc", "zeek-agent", "policy-sync", "firewalld", "auditd"][index],
+  command: ["systemctl status collector", "mfa-policy --refresh", "kinit --renew", "zeekctl cron", "policyctl checksum", "fwctl verify", "auditctl rotate"][index],
+  yara: "No YARA attack identified",
+  sigma: "No Sigma attack identified",
+  intel: "The process behaviour is consistent with administrative baseline."
+}));
+
+const files = Array.from({ length: 7 }, (_, index) => {
+  const time = new Date(endTime.getTime() - Math.floor(Math.random() * 60) * 60 * 1000);
+  return {
+    timestamp: displayTime(time),
+    verdict: "Normal",
+    event: ["Policy export", "Collector cache", "Signed DLL scan", "Audit archive", "Config backup", "Certificate bundle", "Service manifest"][index],
+    packets: 202 + index * 14,
+    location: ["/var/log/trata/policy.json", "/opt/trata/cache/state.db", "/usr/lib/security/auth.dll", "/var/audit/hourly.tar", "/etc/trata/backup.yml", "/etc/ssl/certs/ngoc.pem", "/opt/trata/service.toml"][index],
+    parentProcess: ["policy-sync", "trata-collector", "yara-scan", "auditd", "backup-agent", "cert-watch", "systemd"][index],
+    size: ["48 KB", "19 MB", "276 KB", "82 MB", "11 KB", "6 KB", "4 KB"][index],
+    yara: "No YARA attack identified",
+    executable: index === 2 || index === 6 ? "Yes" : "No",
+    running: index === 6 ? "Yes" : "No",
+    intel: "File activity is expected for the host role and maintenance window."
+  };
+});
+
+function suspiciousPacket() {
+  return {
+    timestamp: displayTime(nextSuspiciousTime),
+    verdict: "Suspicious",
+    event: "Outbound beacon pattern",
+    packets: 287,
+    duration: "41s",
+    sourceIp: "10.24.18.77",
+    sourcePort: 49322,
+    protocol: "TLS",
+    attackType: "Command and control",
+    transferred: 287,
+    intel: "New beacon cadence detected. Suggested proxy block: 198.51.100.42."
+  };
+}
+
+function suspiciousLog() {
+  return {
+    timestamp: displayTime(nextSuspiciousTime),
+    verdict: "Suspicious",
+    event: "Encoded command execution",
+    packets: 241,
+    processId: 6224,
+    generatedTimestamp: displayTime(nextSuspiciousTime),
+    generatedBy: "powershell.exe",
+    command: "powershell -enc SQBFAFgA",
+    yara: "YARA: encoded_loader_probe",
+    sigma: "Sigma: suspicious_encoded_command",
+    intel: "Technique resembles T1059.001. Suggested proxy block: 198.51.100.42."
+  };
+}
+
+function badge(value) {
+  return `<span class="badge ${value === "Suspicious" ? "alert" : ""}">${value}</span>`;
+}
+
+function routeTo(route) {
+  const cleanRoute = (route || "dashboard").split("?")[0];
+  state.route = $(`[data-page="${cleanRoute}"]`) ? cleanRoute : "dashboard";
+  $$(".page").forEach((page) => page.classList.toggle("active", page.dataset.page === state.route));
+  $$(".nav a, .brand, .profile-card").forEach((link) => link.classList.toggle("active", link.dataset.route === state.route));
+  history.replaceState(null, "", `#${state.route}`);
   window.scrollTo(0, 0);
-}
-
-async function getJson(path, fallbackValue, timeoutMs = 900) {
-  const base = localStorage.getItem("trataBackendUrl") || fallback.profile.backendUrl;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${base}${path}`, {
-      headers: { "x-api-key": $("#apiKey")?.textContent || "" },
-      signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
-    return payload && Object.keys(payload).length ? payload : fallbackValue;
-  } catch {
-    return fallbackValue;
-  } finally {
-    clearTimeout(timer);
+  if (state.route === "behaviour" && state.graphResize) {
+    requestAnimationFrame(state.graphResize);
   }
-}
-
-function setInitialFields() {
-  $("#operatorName").value = fallback.profile.name;
-  $("#organisation").value = fallback.profile.organisation;
-  $("#role").value = fallback.profile.role;
-  $("#backendUrl").value = localStorage.getItem("trataBackendUrl") || fallback.profile.backendUrl;
-  renderProfile();
-}
-
-function renderProfile() {
-  const name = $("#operatorName")?.value || fallback.profile.name;
-  const role = $("#role")?.value || fallback.profile.role;
-  const organisation = $("#organisation")?.value || fallback.profile.organisation;
-  $("#sideName").textContent = name;
-  $("#sideRole").textContent = role;
-  $("#sideOrg").textContent = organisation;
-  $(".avatar").textContent = name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-}
-
-function updateClock() {
-  $("#clock").textContent = new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "medium",
-    hour12: false
-  }).format(new Date());
-}
-
-function renderScores() {
-  const scores = state.data.dashboard.scores || fallback.dashboard.scores;
-  $("#yaraScore").textContent = scores.yara;
-  $("#sigmaScore").textContent = scores.sigma;
-  $("#cveScore").textContent = scores.cve;
-  $("#coverageScore").textContent = scores.coverage;
-  $("#heroScore").textContent = Math.round((scores.yara + scores.sigma + scores.coverage + (100 - scores.cve)) / 4);
 }
 
 function renderTraffic() {
-  const chart = $("#trafficChart");
-  chart.innerHTML = "";
-  state.data.dashboard.traffic.forEach((value) => {
-    const bar = document.createElement("div");
-    bar.className = `traffic-bar ${value > 82 ? "alert" : ""}`;
-    bar.style.height = `${Math.max(18, value * 1.8)}px`;
-    bar.title = `${value} flows`;
-    chart.appendChild(bar);
+  const values = timeline.map((time, index) => ({
+    time: displayTime(time),
+    packets: packets[index]?.packets || 220,
+    sessions: 52 + index * 4,
+    files: 11 + index,
+    verdict: packets[index]?.verdict || "Normal",
+    event: packets[index]?.event || "Normal operations"
+  }));
+  if (state.suspicious) {
+    values.push({
+      time: displayTime(nextSuspiciousTime),
+      packets: 287,
+      sessions: 81,
+      files: 19,
+      verdict: "Suspicious",
+      event: "Outbound beacon pattern"
+    });
+  }
+  const max = Math.max(...values.map((item) => item.packets));
+  const points = values.map((item, index) => {
+    const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100;
+    const y = 100 - (item.packets / max) * 86;
+    return { ...item, x, y };
   });
+  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  $("#trafficChart").innerHTML = `
+    <svg class="traffic-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${polyline}" fill="none" stroke="#4A74A7" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
+      <polyline points="${polyline}" fill="none" stroke="#68E1FD" stroke-width="0.8" opacity="0.75" vector-effect="non-scaling-stroke"></polyline>
+    </svg>
+    ${points.map((point) => `
+      <button class="traffic-point ${point.verdict === "Suspicious" ? "alert" : ""}" style="left:${point.x}%; bottom:${100 - point.y}%">
+        <span class="tooltip"><b>${point.time}</b><br>${point.packets} packets, ${point.sessions} sessions<br>${point.event}</span>
+      </button>
+      <span class="traffic-label" style="left:${point.x}%">${point.time}</span>
+    `).join("")}
+  `;
 }
 
-function renderAttacks() {
-  const wrap = $("#attackBars");
-  wrap.innerHTML = "";
-  const max = Math.max(...state.data.dashboard.attacks.map(([, count]) => count));
-  state.data.dashboard.attacks.forEach(([name, count]) => {
-    const row = document.createElement("div");
-    row.className = "attack-row";
-    row.innerHTML = `<header><b>${name}</b><span>${count}</span></header><div class="mini-bar"><i style="width:${(count / max) * 100}%"></i></div><small>${count} confirmed or prevented attempts in the current window.</small>`;
-    wrap.appendChild(row);
-  });
-}
-
-function renderSystem() {
-  const system = state.data.system || fallback.system;
-  $("#systemList").innerHTML = Object.entries(system).map(([key, value]) => `
-    <div class="system-row"><span>${key.replace(/^\w/, (c) => c.toUpperCase())}</span><b>${value}</b></div>
+function renderRealtime() {
+  const items = timeline.flatMap((time) => [
+    `${fileTime(time)}.log`,
+    `${fileTime(time)}.pcap`,
+    `collector_${fileTime(time)}.json`
+  ]);
+  if (state.suspicious) {
+    items.unshift(`${fileTime(nextSuspiciousTime)}.log`, `${fileTime(nextSuspiciousTime)}.pcap`, "file.exe");
+  }
+  $("#realtimeData").innerHTML = items.map((item, index) => `
+    <div class="data-item ${state.suspicious && index < 3 ? "alert" : ""}">
+      <b>${item}</b><span>${index < 3 && state.suspicious ? "new" : "indexed"}</span>
+    </div>
   `).join("");
 }
 
-function severityClass(level) {
-  if (level === "HIGH") return "alert";
-  if (level === "MED") return "warn";
-  return level === "INFO" ? "info" : "";
-}
-
-function addAuditEvent(force = false) {
-  if (state.auditPaused && !force) return;
-  const [level, message, detail] = auditTemplates[state.auditIndex % auditTemplates.length];
-  state.auditIndex += 1;
-  const time = new Date().toLocaleTimeString("en-IN", { hour12: false });
-  const item = document.createElement("div");
-  item.className = "audit-item";
-  item.innerHTML = `<time>${time}</time><span class="badge ${severityClass(level)}">${level}</span><p>${message}<small>${detail}</small></p>`;
-  $("#auditStream").prepend(item);
-  [...$("#auditStream").children].slice(14).forEach((node) => node.remove());
-  $("#heroSignals").textContent = (18421 + state.auditIndex * 13).toLocaleString("en-IN");
-}
-
-function renderTable() {
-  const query = $("#tableSearch").value.trim().toLowerCase();
-  const rows = (state.data[state.currentTable] || fallback[state.currentTable]).filter((row) =>
-    row.join(" ").toLowerCase().includes(query)
-  );
-  $("#tableHead").innerHTML = `<tr>${tableConfig[state.currentTable].map((head) => `<th>${head}</th>`).join("")}</tr>`;
-  if (!rows.some((row) => row.join("|") === state.selectedRow?.join("|"))) {
-    state.selectedRow = rows[0] || fallback[state.currentTable][0];
-  }
-  $("#tableBody").innerHTML = rows.map((row, index) => `
-    <tr class="${row.join("|") === state.selectedRow?.join("|") ? "selected" : ""}" data-row="${index}">
-      ${row.map((cell) => `<td>${decorateCell(cell)}</td>`).join("")}
+function renderTable(kind, rows, bodyId, headId, query = "") {
+  const columns = kind === "files"
+    ? ["Timestamp", "Verdict", "Event", "Packets", "File location"]
+    : ["Timestamp", "Verdict", "Event", "Packets"];
+  const filtered = rows.filter((row) => Object.values(row).join(" ").toLowerCase().includes(query.toLowerCase()));
+  $(`#${headId}`).innerHTML = `<tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr>`;
+  $(`#${bodyId}`).innerHTML = filtered.map((row, index) => `
+    <tr data-kind="${kind}" data-index="${rows.indexOf(row)}" class="${rows.indexOf(row) === state.selected[kind] ? "selected" : ""}">
+      <td>${row.timestamp}</td>
+      <td>${badge(row.verdict)}</td>
+      <td>${row.event}</td>
+      <td>${row.packets}</td>
+      ${kind === "files" ? `<td>${row.location}</td>` : ""}
     </tr>
   `).join("");
-  renderDetail();
 }
 
-function decorateCell(cell) {
-  const text = String(cell);
-  if (["Attacked", "Blocked", "Quarantined"].includes(text)) return `<span class="badge alert">${text}</span>`;
-  if (["Review", "Waiting", "Contained", "Queued"].includes(text)) return `<span class="badge warn">${text}</span>`;
-  if (["Allowed", "Resolved", "Clean", "Non attacked"].includes(text)) return `<span class="badge">${text}</span>`;
-  return text;
+function renderDetail(kind, rows, targetId) {
+  const row = rows[state.selected[kind]];
+  const fields = kind === "packets" ? [
+    ["Timestamp", row.timestamp], ["Duration", row.duration], ["Source IP", row.sourceIp], ["Source port", row.sourcePort],
+    ["Protocol", row.protocol], ["Attack type", row.attackType], ["Packets transferred", row.transferred]
+  ] : kind === "logs" ? [
+    ["Process ID", row.processId], ["Process generated timestamp", row.generatedTimestamp], ["Process generated by", row.generatedBy],
+    ["Command run", row.command], ["YARA identified attack", row.yara], ["Sigma identified attack", row.sigma]
+  ] : [
+    ["Parent process", row.parentProcess], ["Size", row.size], ["YARA identified attack", row.yara],
+    ["Location", row.location], ["Is executable", row.executable], ["Is running", row.running]
+  ];
+  $(`#${targetId}`).classList.add("open");
+  $(`#${targetId}`).innerHTML = `
+    <div class="detail-grid">${fields.map(([label, value]) => `<div class="detail-row"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
+    <aside class="intel-box">
+      <div class="intel-row"><span>Threat intel</span><b>${row.intel}</b></div>
+      <div class="intel-row"><span>MITRE ATT&CK</span><b>${row.verdict === "Suspicious" ? "T1059.001, T1071.001" : "No active technique mapped"}</b></div>
+      <div class="intel-row"><span>CVE context</span><b>${row.verdict === "Suspicious" ? "No CVE required for current containment" : "No exploit correlation in this window"}</b></div>
+    </aside>
+  `;
+}
+
+function hideDetail(targetId) {
+  const target = $(`#${targetId}`);
+  target.classList.remove("open");
+  target.innerHTML = "";
 }
 
 function renderProxy() {
+  $("#proxyCount").textContent = state.proxy.filter((item) => item.status === "Blocked").length;
   $("#proxyList").innerHTML = state.proxy.map((item, index) => `
-    <div class="proxy-row">
-      <header><b>${item.ip}</b><span class="badge ${item.status === "Blocked" ? "alert" : ""}">${item.status}</span></header>
-      <small>${item.url} | previous attacks: ${item.attacks} | ${item.reason}</small>
+    <article class="panel proxy-row">
+      <header><b>${item.ip}</b>${badge(item.status === "Blocked" ? "Suspicious" : "Normal")}</header>
+      <small>${item.reason}${item.suggested ? " | suggested from recent suspicious activity" : ""}</small>
       <div class="proxy-actions">
-        <button class="text-button" data-proxy="${index}" data-action="Allowed">Allow</button>
-        <button class="text-button" data-proxy="${index}" data-action="Blocked">Block</button>
+        <button class="text-button" data-proxy="${index}" data-status="Allowed">Allow</button>
+        <button class="text-button" data-proxy="${index}" data-status="Blocked">Block</button>
       </div>
-    </div>
+    </article>
   `).join("");
 }
 
-function renderPlaybook() {
-  $("#playbookList").innerHTML = fallback.playbook.map(([action, status, reason]) => `
-    <div class="playbook-row">
-      <header><b>${action}</b><span class="badge ${severityClass(status === "Ready" ? "INFO" : "MED")}">${status}</span></header>
-      <small>${reason}</small>
+function renderProfile() {
+  $("#profileInitials").textContent = profile.name.split(" ").map((part) => part[0]).join("");
+  $("#profileNameMini").textContent = profile.name;
+  $("#profileRoleMini").textContent = profile.role;
+  $("#oauthState").textContent = state.loggedIn ? "Connected" : "Sign in required";
+  $("#oauthPanel").style.display = state.loggedIn ? "none" : "grid";
+  const maskedKey = state.keyVisible ? profile.apiKey : "••••••••••••••••••••••••";
+  $("#profileData").innerHTML = state.loggedIn ? [
+    ["Name", profile.name], ["Organization", profile.organization], ["Team", profile.team], ["Role", profile.role],
+    ["Email", profile.email], ["Device", profile.device]
+  ].map(([label, value]) => `<div class="profile-row"><span>${label}</span><b>${value}</b></div>`).join("") + `
+    <div class="collector-box">
+      <div class="collector-row"><span>Collector pairing key</span><code id="collectorKey">${maskedKey}</code></div>
+      <button id="toggleCollectorKey" class="text-button">${state.keyVisible ? "Hide" : "Show"}</button>
+      <button id="generateCollectorKey" class="text-button">Generate key</button>
+      <button id="copyCollectorKey" class="primary-action">Copy key</button>
     </div>
-  `).join("");
+  ` : "";
 }
 
-function renderOperations() {
-  $("#assetList").innerHTML = fallback.assets.map(([asset, risk, detail]) => `
-    <div class="asset-row">
-      <header><b>${asset}</b><span class="badge ${risk === "High" ? "alert" : "warn"}">${risk}</span></header>
-      <small>${detail}</small>
-    </div>
-  `).join("");
-
-  $("#vulnerabilityList").innerHTML = fallback.vulnerabilities.map(([cve, priority, detail]) => `
-    <div class="vulnerability-row">
-      <header><b>${cve}</b><span class="badge ${priority === "Critical" ? "alert" : "warn"}">${priority}</span></header>
-      <small>${detail}</small>
-    </div>
-  `).join("");
-
-  $("#assuranceList").innerHTML = fallback.assurance.map(([control, stateText, detail]) => `
-    <div class="assurance-row">
-      <header><b>${control}</b><span class="badge info">${stateText}</span></header>
-      <small>${detail}</small>
-    </div>
-  `).join("");
+function answer(message) {
+  const text = message.toLowerCase();
+  if (text.includes("proxy") || text.includes("block")) return state.suspicious ? "Block 198.51.100.42. It is tied to the new beacon pattern." : "No new block is suggested in the current one-hour window.";
+  if (text.includes("packet")) return "Packet capture is normal across the last hour. The next 10-minute window is being watched for beacon cadence.";
+  if (text.includes("sign") || text.includes("login")) return "Open Profile and sign in with Google or your organization credentials.";
+  return state.suspicious ? "Suspicious activity is active. Review Packet Capture, Logs, Behaviour, and Proxy." : "Current posture is normal across packet, log, file, and proxy telemetry.";
 }
 
-function renderDetail() {
-  const headers = tableConfig[state.currentTable];
-  const row = state.selectedRow || fallback[state.currentTable][0];
-  $("#detailView").innerHTML = headers.map((header, index) => `
-    <div class="detail-row">
-      <span>${header}</span>
-      <b>${row[index] || "Not recorded"}</b>
-    </div>
-  `).join("");
-  $("#detailState").textContent = state.currentTable === "intel" ? "threat context" : "evidence selected";
-}
-
-function addChat(message, fromUser = false) {
+function addChat(text, user = false) {
   const item = document.createElement("div");
-  item.className = `message ${fromUser ? "user" : ""}`;
-  item.textContent = message;
+  item.className = `message ${user ? "user" : ""}`;
+  item.textContent = text;
   $("#chatLog").appendChild(item);
-  item.scrollIntoView({ block: "nearest" });
+  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
 }
 
-function answerQuestion(text) {
-  const lower = text.toLowerCase();
-  if (lower.includes("cve")) return "Prioritise CVE-2025-53770 first. It touches an exposed collaboration asset, has active exploit pressure, and overlaps with the current credential access chain.";
-  if (lower.includes("mitre") || lower.includes("ttp")) return "The active path maps to T1110, T1003.001, T1021.002, and T1041. The strongest evidence is Kerberos spray followed by SMB admin share probing.";
-  if (lower.includes("block") || lower.includes("response")) return "Keep 185.199.108.153 blocked, isolate NGOC-SOC-EDGE-07, revoke svc_backup_legacy, then snapshot FILE-SRV-03 before deeper file recovery.";
-  return "Current assessment: medium-high confidence intrusion attempt, contained at egress. No evidence of completed exfiltration, but lateral movement probing needs endpoint isolation now.";
+function triggerSuspicious() {
+  if (state.suspicious) return;
+  state.suspicious = true;
+  packets.push(suspiciousPacket());
+  logs.push(suspiciousLog());
+  state.proxy.unshift({ ip: "198.51.100.42", status: "Blocked", reason: "Suggested block from outbound beacon pattern", suggested: true });
+  $("#graphState").textContent = "Suspicious edge detected";
+  renderAll();
+  addChat("New suspicious 10-minute window detected. Suggested proxy block added for 198.51.100.42.");
+}
+
+function renderAll() {
+  renderTraffic();
+  renderRealtime();
+  renderTable("packets", packets, "packetBody", "packetHead", $("#packetSearch")?.value || "");
+  renderTable("logs", logs, "logBody", "logHead", $("#logSearch")?.value || "");
+  renderTable("files", files, "fileBody", "fileHead", $("#fileSearch")?.value || "");
+  renderProxy();
+  renderProfile();
+  updateCountdown();
+}
+
+function updateCountdown() {
+  const remaining = Math.max(0, nextSuspiciousTime.getTime() - Date.now());
+  const minutes = Math.floor(remaining / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+  $("#nextWindow").textContent = `${pad(minutes)}:${pad(seconds)}`;
+  if (remaining <= 0) triggerSuspicious();
 }
 
 function bindEvents() {
-  $("#generateKey").addEventListener("click", () => {
-    const random = crypto.getRandomValues(new Uint32Array(3));
-    $("#apiKey").textContent = `trata_live_${[...random].map((n) => n.toString(36).slice(0, 4).toUpperCase()).join("_")}`;
-    $("#syncStatus").textContent = "New collector key generated. Paste it into the endpoint collector before first run.";
-  });
-
-  $("#copyKey").addEventListener("click", async () => {
-    await navigator.clipboard.writeText($("#apiKey").textContent);
-    $("#syncStatus").textContent = "API key copied. Collector can now pair with this console.";
-  });
-
-  $("#profileForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    renderProfile();
-    localStorage.setItem("trataBackendUrl", $("#backendUrl").value || fallback.profile.backendUrl);
-    $("#syncStatus").textContent = "Sync requested. Backend enrichment is running in the background.";
-    hydrate();
-  });
-
-  ["operatorName", "organisation", "role"].forEach((id) => {
-    $(`#${id}`).addEventListener("input", renderProfile);
-  });
-
-  $("#pauseAudit").addEventListener("click", () => {
-    state.auditPaused = !state.auditPaused;
-    $("#pauseAudit").textContent = state.auditPaused ? "Resume feed" : "Pause feed";
-    $("#auditRate").textContent = state.auditPaused ? "paused" : "streaming";
-  });
-
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((node) => node.classList.remove("active"));
-      tab.classList.add("active");
-      state.currentTable = tab.dataset.table;
-      renderTable();
+  $$(".nav a, .brand, .profile-card").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      routeTo(link.dataset.route);
     });
   });
-
-  $("#tableSearch").addEventListener("input", renderTable);
-
-  $("#tableBody").addEventListener("click", (event) => {
-    const rowElement = event.target.closest("[data-row]");
-    if (!rowElement) return;
-    const query = $("#tableSearch").value.trim().toLowerCase();
-    const rows = (state.data[state.currentTable] || fallback[state.currentTable]).filter((row) =>
-      row.join(" ").toLowerCase().includes(query)
-    );
-    state.selectedRow = rows[Number(rowElement.dataset.row)];
-    renderTable();
+  $("#themeToggle").addEventListener("click", () => {
+    state.dark = !state.dark;
+    document.body.classList.toggle("dark", state.dark);
+    $("#themeToggle").textContent = state.dark ? "Light mode" : "Dark mode";
   });
-
-  $("#markEvidence").addEventListener("click", () => {
-    $("#detailState").textContent = "reviewed";
-    addAuditEvent(true);
+  [["packetSearch", "packets", packets, "packetBody", "packetHead"], ["logSearch", "logs", logs, "logBody", "logHead"], ["fileSearch", "files", files, "fileBody", "fileHead"]].forEach(([input, kind, rows, body, head]) => {
+    $(`#${input}`).addEventListener("input", () => {
+      renderTable(kind, rows, body, head, $(`#${input}`).value);
+      if (kind === "packets") hideDetail("packetDetail");
+      if (kind === "logs") hideDetail("logDetail");
+      if (kind === "files") hideDetail("fileDetail");
+    });
   });
-
-  $("#promoteEvidence").addEventListener("click", () => {
-    $("#detailState").textContent = "case evidence";
-    $("#heroActions").textContent = Number($("#heroActions").textContent) + 1;
-    addChat("Selected evidence promoted to case NGOC-APT-2026-0719 with current telemetry context attached.");
+  ["packetBody", "logBody", "fileBody"].forEach((bodyId) => {
+    $(`#${bodyId}`).addEventListener("click", (event) => {
+      const row = event.target.closest("[data-kind]");
+      if (!row) return;
+      const kind = row.dataset.kind;
+      state.selected[kind] = Number(row.dataset.index);
+      renderAll();
+      if (kind === "packets") renderDetail("packets", packets, "packetDetail");
+      if (kind === "logs") renderDetail("logs", logs, "logDetail");
+      if (kind === "files") renderDetail("files", files, "fileDetail");
+    });
   });
-
+  $("#addProxyButton").addEventListener("click", () => $("#proxyForm").classList.toggle("open"));
+  $("#proxyForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const ip = $("#proxyIp").value.trim();
+    if (!ip) return;
+    state.proxy.unshift({ ip, status: "Blocked", reason: $("#proxyReason").value || "Manual operator block", suggested: false });
+    $("#proxyIp").value = "";
+    $("#proxyReason").value = "";
+    renderProxy();
+  });
   $("#proxyList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-proxy]");
     if (!button) return;
-    const item = state.proxy[Number(button.dataset.proxy)];
-    item.status = button.dataset.action;
-    addAuditEvent(true);
-    $("#syncStatus").textContent = `${item.ip} moved to ${item.status.toLowerCase()} proxy policy.`;
+    state.proxy[Number(button.dataset.proxy)].status = button.dataset.status;
     renderProxy();
   });
-
-  $("#runPlaybook").addEventListener("click", () => {
-    $("#playbookState").textContent = "playbook executed";
-    $("#heroActions").textContent = Number($("#heroActions").textContent) + 3;
-    addAuditEvent(true);
-    addChat("Containment playbook executed for edge workstation, blocked C2 IP, and revoked legacy service credential.");
+  $("#googleLogin").addEventListener("click", () => {
+    const clientId = GOOGLE_CLIENT_ID;
+    if (!clientId || clientId === "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com") {
+      $("#oauthState").textContent = "Google sign-in unavailable";
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: () => completeLogin()
+      });
+      window.google.accounts.id.prompt();
+      $("#oauthState").textContent = "Google sign-in opened";
+      return;
+    }
+    sessionStorage.setItem("trataOAuthRequest", new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: location.origin + location.pathname,
+      response_type: "id_token",
+      scope: "openid profile email"
+    }).toString());
+    $("#oauthState").textContent = "Google sign-in loading";
+  });
+  $("#manualLogin").addEventListener("click", (event) => {
+    event.preventDefault();
+    const username = $("#manualUsername").value.trim();
+    const password = $("#manualPassword").value;
+    if (username !== LOCAL_USERNAME || password !== LOCAL_PASSWORD) {
+      $("#oauthState").textContent = "Invalid credentials";
+      return;
+    }
+    completeLogin();
   });
 
-  $("#simulateIncident").addEventListener("click", () => {
-    const traffic = state.data.dashboard.traffic;
-    traffic.push(128);
-    traffic.shift();
-    state.data.logs.unshift(["Now", "8s", "Attacked", "Suspicious service ticket request spike", "10.24.18.33", "Sigma: kerberos_spray"]);
-    state.auditIndex += 1;
-    renderTraffic();
-    addAuditEvent(true);
-    $("#trafficState").textContent = "new suspicious flow injected";
+  function completeLogin() {
+    localStorage.setItem("trataOAuth", "connected");
+    state.loggedIn = true;
+    $("#oauthState").textContent = "Connected";
+    renderProfile();
+    history.replaceState(null, "", `#profile`);
+  }
+  $("#profileData").addEventListener("click", async (event) => {
+    if (event.target.id === "toggleCollectorKey") {
+      state.keyVisible = !state.keyVisible;
+      renderProfile();
+    }
+    if (event.target.id === "generateCollectorKey") {
+      const random = crypto.getRandomValues(new Uint32Array(3));
+      profile.apiKey = `trata_live_${[...random].map((n) => n.toString(36).slice(0, 4).toUpperCase()).join("_")}`;
+      state.keyVisible = false;
+      renderProfile();
+    }
+    if (event.target.id === "copyCollectorKey") {
+      await navigator.clipboard.writeText(profile.apiKey);
+      event.target.textContent = "Copied";
+      setTimeout(() => {
+        const button = $("#copyCollectorKey");
+        if (button) button.textContent = "Copy key";
+      }, 900);
+    }
   });
-
+  $("#chatToggle").addEventListener("click", () => $("#chatWidget").classList.toggle("open"));
   $("#chatForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const text = $("#chatInput").value.trim();
     if (!text) return;
     addChat(text, true);
     $("#chatInput").value = "";
-    setTimeout(() => addChat(answerQuestion(text)), 450);
+    setTimeout(() => addChat(answer(text)), 250);
   });
+  addEventListener("hashchange", () => routeTo(location.hash.replace("#", "") || "dashboard"));
 }
 
-async function hydrate() {
-  const [system, dashboard, packets, logs, files, intel, proxy] = await Promise.all([
-    getJson("/api/system", fallback.system),
-    getJson("/api/dashboard", fallback.dashboard),
-    getJson("/api/packets", fallback.packets),
-    getJson("/api/logs", fallback.logs),
-    getJson("/api/files", fallback.files),
-    getJson("/api/intel", fallback.intel),
-    getJson("/api/proxy", fallback.proxy)
-  ]);
-  state.data = { ...state.data, system, dashboard, packets, logs, files, intel };
-  state.proxy = Array.isArray(proxy) ? proxy : fallback.proxy;
-  $("#systemSource").textContent = system === fallback.system ? "Endpoint telemetry" : "Backend telemetry";
-  renderScores();
-  renderTraffic();
-  renderAttacks();
-  renderSystem();
-  renderTable();
-  renderProxy();
-  renderPlaybook();
-  renderOperations();
-}
-
-function renderLocalData() {
-  renderScores();
-  renderTraffic();
-  renderAttacks();
-  renderSystem();
-  renderTable();
-  renderProxy();
-  renderPlaybook();
-  renderOperations();
-}
-
-function startMesh() {
-  const canvas = $("#mesh");
+function startHeroCanvas() {
+  const canvas = $("#heroGraph");
   const ctx = canvas.getContext("2d");
-  const dots = Array.from({ length: 34 }, () => ({ x: Math.random(), y: Math.random(), vx: (Math.random() - 0.5) * 0.00055, vy: (Math.random() - 0.5) * 0.00055 }));
-  let visible = true;
+  const points = Array.from({ length: 28 }, () => ({ x: Math.random(), y: Math.random(), vx: (Math.random() - 0.5) * 0.0006, vy: (Math.random() - 0.5) * 0.0006 }));
   function size() {
-    const ratio = Math.min(devicePixelRatio, 1.5);
-    canvas.width = canvas.offsetWidth * ratio;
-    canvas.height = canvas.offsetHeight * ratio;
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
   }
   function draw() {
-    if (!visible) {
-      requestAnimationFrame(draw);
-      return;
-    }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const w = canvas.width;
-    const h = canvas.height;
-    const gradient = ctx.createRadialGradient(w * 0.55, h * 0.35, 40, w * 0.55, h * 0.35, Math.max(w, h));
-    gradient.addColorStop(0, "rgba(74,116,167,0.48)");
-    gradient.addColorStop(0.55, "rgba(20,42,68,0.52)");
-    gradient.addColorStop(1, "rgba(8,20,38,1)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h);
-    dots.forEach((dot, i) => {
-      dot.x += dot.vx;
-      dot.y += dot.vy;
-      if (dot.x < 0 || dot.x > 1) dot.vx *= -1;
-      if (dot.y < 0 || dot.y > 1) dot.vy *= -1;
-      const x = dot.x * w;
-      const y = dot.y * h;
-      ctx.fillStyle = i % 9 === 0 ? palette.red : palette.cyan;
-      ctx.globalAlpha = i % 9 === 0 ? 0.85 : 0.42;
-      ctx.beginPath();
-      ctx.arc(x, y, i % 9 === 0 ? 3.6 : 2.2, 0, Math.PI * 2);
-      ctx.fill();
-      dots.slice(i + 1).forEach((other) => {
-        const ox = other.x * w;
-        const oy = other.y * h;
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg");
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    points.forEach((point, index) => {
+      point.x += point.vx;
+      point.y += point.vy;
+      if (point.x < 0 || point.x > 1) point.vx *= -1;
+      if (point.y < 0 || point.y > 1) point.vy *= -1;
+      points.slice(index + 1).forEach((other) => {
+        const x = point.x * canvas.width;
+        const y = point.y * canvas.height;
+        const ox = other.x * canvas.width;
+        const oy = other.y * canvas.height;
         const distance = Math.hypot(x - ox, y - oy);
-        if (distance < 140) {
-          ctx.strokeStyle = palette.ice;
-          ctx.globalAlpha = 0.1 * (1 - distance / 140);
+        if (distance < 180) {
+          ctx.globalAlpha = 0.16;
+          ctx.strokeStyle = "#DCEAF7";
           ctx.beginPath();
           ctx.moveTo(x, y);
           ctx.lineTo(ox, oy);
           ctx.stroke();
         }
       });
+      ctx.globalAlpha = 0.65;
+      ctx.fillStyle = index % 8 === 0 ? "#58D68D" : "#68E1FD";
+      ctx.beginPath();
+      ctx.arc(point.x * canvas.width, point.y * canvas.height, 2.6, 0, Math.PI * 2);
+      ctx.fill();
     });
     ctx.globalAlpha = 1;
     requestAnimationFrame(draw);
   }
   size();
   addEventListener("resize", size);
-  const observer = new IntersectionObserver(([entry]) => {
-    visible = entry.isIntersecting;
-  });
-  observer.observe(canvas);
   draw();
 }
 
-async function init() {
-  forceTop();
-  setInitialFields();
-  updateClock();
-  setInterval(updateClock, 1000);
-  renderLocalData();
+function startBehaviourGraph() {
+  const canvas = $("#behaviourGraph");
+  const ctx = canvas.getContext("2d");
+  const labels = ["Aarav", "IDP", "Zeek", "Proxy", "Files", "DB-01", "OT-GW", "Edge-07", "Backup", "SOC", "DNS", "SharePoint"];
+  const nodes = Array.from({ length: 42 }, (_, index) => ({
+    label: labels[index] || `host-${String(index).padStart(2, "0")}`,
+    x: 0.12 + Math.random() * 0.76,
+    y: 0.12 + Math.random() * 0.76,
+    vx: (Math.random() - 0.5) * 0.001,
+    vy: (Math.random() - 0.5) * 0.001,
+    important: index < labels.length
+  }));
+  const edges = Array.from({ length: 96 }, (_, index) => [
+    index % nodes.length,
+    Math.floor((index * 7 + 5) % nodes.length),
+    0.35 + Math.random() * 0.65
+  ]);
+  let tick = 0;
+  function size() {
+    const box = canvas.getBoundingClientRect();
+    const width = Math.max(720, box.width || canvas.parentElement.clientWidth || 900);
+    const height = Math.max(520, box.height || canvas.parentElement.clientHeight || 560);
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  function draw() {
+    const width = canvas.width / Math.min(devicePixelRatio || 1, 2);
+    const height = canvas.height / Math.min(devicePixelRatio || 1, 2);
+    tick += 0.01;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--chart-bg").trim() || "#03060B";
+    ctx.fillRect(0, 0, width, height);
+    nodes.forEach((node) => {
+      node.x += node.vx + Math.sin(tick + node.y * 6) * 0.00012;
+      node.y += node.vy + Math.cos(tick + node.x * 6) * 0.00012;
+      if (node.x < 0.04 || node.x > 0.96) node.vx *= -1;
+      if (node.y < 0.06 || node.y > 0.94) node.vy *= -1;
+    });
+    edges.forEach(([a, b, weight], index) => {
+      const from = nodes[a];
+      const to = nodes[b];
+      const alert = state.suspicious && (index === 7 || index === 29 || index === 58);
+      ctx.strokeStyle = alert ? "#FF6B6B" : "#58D68D";
+      ctx.globalAlpha = alert ? 0.95 : 0.12 + weight * 0.18;
+      ctx.lineWidth = alert ? 2.6 : 0.8 + weight;
+      ctx.beginPath();
+      ctx.moveTo(from.x * width, from.y * height);
+      ctx.lineTo(to.x * width, to.y * height);
+      ctx.stroke();
+      if (alert) {
+        const px = from.x * width + (to.x - from.x) * width * ((Math.sin(tick * 5) + 1) / 2);
+        const py = from.y * height + (to.y - from.y) * height * ((Math.sin(tick * 5) + 1) / 2);
+        ctx.fillStyle = "#FF6B6B";
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    nodes.forEach((node, index) => {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = state.suspicious && index === 7 ? "#FF6B6B" : node.important ? "#68E1FD" : "#4A74A7";
+      ctx.beginPath();
+      ctx.arc(node.x * width, node.y * height, state.suspicious && index === 7 ? 7 : node.important ? 5 : 3, 0, Math.PI * 2);
+      ctx.fill();
+      if (node.important) {
+        ctx.font = "12px Inter, sans-serif";
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--text").trim() || "#F4F9FF";
+        ctx.globalAlpha = 0.82;
+        ctx.fillText(node.label, node.x * width + 8, node.y * height - 8);
+      }
+    });
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+  size();
+  state.graphResize = size;
+  addEventListener("resize", size);
+  draw();
+}
+
+function init() {
+  routeTo(location.hash.replace("#", "") || "dashboard");
+  renderAll();
   bindEvents();
-  addChat("TRATA has correlated the current anomaly chain. Ask for CVE priority, MITRE mapping, or recommended response.");
-  for (let i = 0; i < 6; i += 1) addAuditEvent(true);
-  requestAnimationFrame(() => {
-    $("#loader").classList.add("hidden");
-    forceTop();
-    setTimeout(startMesh, 80);
-  });
-  hydrate();
-  setInterval(addAuditEvent, 2300);
-  setInterval(() => {
-    const traffic = state.data.dashboard.traffic;
-    traffic.push(Math.round(38 + Math.random() * 92));
-    traffic.shift();
-    renderTraffic();
-  }, 3000);
+  addChat("Current one-hour window is normal. I will flag the next suspicious window when it arrives.");
+  startHeroCanvas();
+  startBehaviourGraph();
+  setInterval(updateCountdown, 1000);
+  setTimeout(triggerSuspicious, Math.max(0, nextSuspiciousTime.getTime() - Date.now()));
+  requestAnimationFrame(() => $("#loader").classList.add("hidden"));
 }
 
 init();

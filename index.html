@@ -7,14 +7,13 @@
     <title>TRATA | Threat Response and Tactical Assessment</title>
     <script>
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-      if (location.hash && location.hash !== "#top") history.replaceState(null, "", location.pathname + location.search);
-      scrollTo(0, 0);
     </script>
-    <link rel="stylesheet" href="./src/styles.css?v=5" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="stylesheet" href="/src/styles.css?v=8" />
   </head>
   <body>
     <div id="loader" class="loader">
-      <div class="loader-grid" aria-hidden="true"></div>
+      <div class="loader-grid"></div>
       <div class="loader-core">
         <span></span>
         <strong>TRATA</strong>
@@ -22,276 +21,155 @@
       </div>
     </div>
 
-    <div class="shell">
-      <aside class="rail" aria-label="Primary">
-        <a class="brand" href="#top" aria-label="TRATA home">
-          <span class="brand-mark">T</span>
-          <span>
-            <b>TRATA</b>
-            <small>Cyber Resilience</small>
-          </span>
+    <div class="app">
+      <aside class="sidebar">
+        <a class="brand" href="#dashboard" data-route="dashboard">
+          <span class="brand-mark">त्र</span>
+          <span><b>TRATA</b><small>त्राता Cyber Resilience</small></span>
         </a>
-        <nav>
-          <a href="#dashboard" class="active">Dashboard</a>
-          <a href="#telemetry">Telemetry</a>
-          <a href="#investigation">Investigation</a>
-          <a href="#response">Response</a>
-          <a href="#assistant">Analyst</a>
+        <nav class="nav">
+          <a href="#dashboard" data-route="dashboard">Dashboard</a>
+          <a href="#packet-capture" data-route="packet-capture">Packet Capture</a>
+          <a href="#logs" data-route="logs">Logs</a>
+          <a href="#files" data-route="files">Files</a>
+          <a href="#behaviour" data-route="behaviour">User System Behaviour</a>
+          <a href="#proxy" data-route="proxy">Proxy</a>
         </nav>
-        <div class="rail-footer">
-          <div class="rail-status">
-            <span class="pulse"></span>
-            <span>Operational fabric active</span>
-          </div>
-          <div class="operator-card">
-            <div class="avatar">AM</div>
-            <div>
-              <b id="sideName">Aarav Menon</b>
-              <small id="sideRole">Incident Commander</small>
-              <span id="sideOrg">National Grid Operations Centre</span>
-            </div>
-          </div>
+        <div class="sidebar-footer">
+          <div class="status-line"><span class="pulse"></span><span>Operational fabric active</span></div>
+          <a class="profile-card" href="#profile" data-route="profile">
+            <span class="avatar" id="profileInitials">AM</span>
+            <span><b id="profileNameMini">Aarav Menon</b><small id="profileRoleMini">Incident Commander</small></span>
+          </a>
         </div>
       </aside>
 
       <main id="top">
-        <section class="hero">
-          <div class="hero-bg" aria-hidden="true">
-            <canvas id="mesh"></canvas>
-            <div class="scanline"></div>
-          </div>
-          <div class="hero-content">
-            <div class="eyebrow">Threat Response and Tactical Assessment</div>
-            <h1>Cyber resilience command console for critical infrastructure.</h1>
-            <p>Behaviour baselines, MITRE ATT&CK mapping, CVE prioritisation, live auditability, and containment controls in one command surface.</p>
-            <div class="hero-actions">
-              <a class="primary-action" href="#dashboard">Open live console</a>
-              <a class="secondary-action" href="#response">Review containment</a>
+        <section class="page active" id="page-dashboard" data-page="dashboard">
+          <header class="landing">
+            <div class="hero-bg"><canvas id="heroGraph"></canvas></div>
+            <div class="landing-copy">
+              <span class="kicker">Threat Response and Tactical Assessment</span>
+              <h1>Cyber resilience command console for critical infrastructure.</h1>
+              <p>Correlated endpoint, packet, log, file, CVE, and proxy intelligence for critical infrastructure operations.</p>
             </div>
-          </div>
-          <div class="hero-panel">
-            <div class="threat-ring">
-              <span></span><span></span><span></span>
-              <b id="heroScore">87</b>
-              <small>Resilience score</small>
-            </div>
-            <div class="hero-metrics">
-              <p><b id="heroMttd">42 min</b><span>MTTD estimate</span></p>
-              <p><b id="heroSignals">18,421</b><span>signals correlated</span></p>
-              <p><b id="heroActions">9</b><span>autonomous actions</span></p>
-            </div>
-          </div>
-          <div class="hero-strip">
-            <span>Case NGOC-APT-2026-0719</span>
-            <span>3 active containment actions</span>
-            <span>7 monitored segments</span>
-            <span>CERT-In package ready</span>
-          </div>
-        </section>
-
-        <section class="signin" id="signin">
-          <div>
-            <span class="section-kicker">Access</span>
-            <h2>Client onboarding</h2>
-            <p>Register an operator profile, generate the collection API key, and hand it to the one-time endpoint collector.</p>
-          </div>
-          <form id="profileForm" class="signin-form">
-            <div class="field-grid">
-              <input id="operatorName" name="name" autocomplete="name" placeholder="Operator name" />
-              <input id="organisation" name="organisation" placeholder="Organisation" />
-              <input id="role" name="role" placeholder="SOC role" />
-              <input id="backendUrl" name="backendUrl" placeholder="Backend URL" />
-            </div>
-            <div class="api-row">
-              <code id="apiKey">trata_live_8K9X_Q2N4_P7RM</code>
-              <button type="button" id="generateKey" class="icon-button" title="Generate key" aria-label="Generate key">New</button>
-              <button type="button" id="copyKey" class="text-button">Copy key</button>
-              <button type="submit" class="primary-action compact">Sync</button>
-            </div>
-            <div id="syncStatus" class="sync-status">Collector handshake ready. Endpoint pairing window is open.</div>
-          </form>
-        </section>
-
-        <section id="dashboard" class="section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Dashboard</span>
-              <h2>Operational posture</h2>
-            </div>
-            <div class="timestamp" id="clock"></div>
-          </div>
-          <div class="score-grid">
-            <article class="score-card">
-              <span>YARA file confidence</span>
-              <strong id="yaraScore">91</strong>
-              <div class="bar"><i style="width: 91%"></i></div>
-              <small>Credential stealer patterns contained on two hosts.</small>
-            </article>
-            <article class="score-card">
-              <span>Sigma log confidence</span>
-              <strong id="sigmaScore">84</strong>
-              <div class="bar"><i style="width: 84%"></i></div>
-              <small>Suspicious PowerShell and service creation bursts detected.</small>
-            </article>
-            <article class="score-card">
-              <span>CVE exposure pressure</span>
-              <strong id="cveScore">72</strong>
-              <div class="bar danger"><i style="width: 72%"></i></div>
-              <small>Three internet-facing assets need accelerated patch review.</small>
-            </article>
-            <article class="score-card">
-              <span>Response coverage</span>
-              <strong id="coverageScore">88</strong>
-              <div class="bar"><i style="width: 88%"></i></div>
-              <small>Endpoint isolation, IP blocks, and credential revocation automated.</small>
-            </article>
-          </div>
-
-          <div class="wide-grid">
-            <article class="panel traffic-panel">
-              <div class="panel-head">
-                <h3>Network traffic timeline</h3>
-                <span id="trafficState">18 suspicious flows in review</span>
+            <div class="hero-panel">
+              <div class="ring"><b id="heroScore">88</b><small>Resilience score</small></div>
+              <div class="metric-list">
+                <p><b id="windowRange">10 min</b><span>time window</span></p>
+                <p><b id="nextWindow">calculating</b><span>next update</span></p>
+                <p><b id="monitoredAssets">42</b><span>assets monitored</span></p>
               </div>
-              <div class="traffic-summary">
-                <div><b>1.4 Gbps</b><span>observed throughput</span></div>
-                <div><b>99.97%</b><span>sensor uptime</span></div>
-                <div><b>7</b><span>segments monitored</span></div>
-                <div><b>312 ms</b><span>response latency</span></div>
+            </div>
+          </header>
+
+          <section class="content">
+            <div class="page-head">
+              <div><span class="kicker">Dashboard</span><h2>Operational posture</h2></div>
+              <div class="toolbar">
+                <button id="themeToggle" class="text-button">Dark mode</button>
               </div>
-              <div id="trafficChart" class="traffic-chart" aria-label="Network traffic timeline"></div>
-              <div class="chart-footer">
-                <span><i class="dot good"></i>Normal</span>
-                <span><i class="dot bad"></i>Suspicious</span>
-                <span>Last 28 collection windows</span>
-              </div>
-            </article>
-            <article class="panel attacks-panel">
-              <div class="panel-head">
-                <h3>Past attack profile</h3>
-                <span>30-day correlation</span>
-              </div>
-              <div id="attackBars" class="attack-bars"></div>
-            </article>
-          </div>
+            </div>
+            <div class="score-grid">
+              <article class="score-card"><span>YARA confidence</span><strong>94</strong><div class="bar"><i style="width:94%"></i></div><small>No malicious file match in the current hour.</small></article>
+              <article class="score-card"><span>Sigma confidence</span><strong>96</strong><div class="bar"><i style="width:96%"></i></div><small>Log behaviour remains inside baseline.</small></article>
+              <article class="score-card"><span>CVE pressure</span><strong>31</strong><div class="bar calm"><i style="width:31%"></i></div><small>No immediate exploit overlap in the active window.</small></article>
+              <article class="score-card"><span>Proxy hygiene</span><strong id="proxyCount">4</strong><div class="bar"><i style="width:78%"></i></div><small>Allowlist and denylist policy is consistent.</small></article>
+            </div>
+
+            <div class="dashboard-grid">
+              <article class="panel">
+                <div class="panel-head"><h3>Network traffic timeline</h3><span id="timelineLabel">Last 1 hour</span></div>
+                <div id="trafficChart" class="traffic-chart"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-head"><h3>Realtime data</h3><span>scrollable feed</span></div>
+                <div id="realtimeData" class="realtime-data"></div>
+              </article>
+            </div>
+          </section>
         </section>
 
-        <section id="telemetry" class="section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Telemetry</span>
-              <h2>System and live audit</h2>
-            </div>
-            <button id="pauseAudit" class="text-button">Pause feed</button>
-          </div>
-          <div class="telemetry-grid">
-            <article class="panel system-panel">
-              <div class="panel-head"><h3>System info</h3><span id="systemSource">Endpoint telemetry</span></div>
-              <div class="system-list" id="systemList"></div>
-            </article>
-            <article class="panel live-panel">
-              <div class="panel-head"><h3>Realtime audit logs</h3><span id="auditRate">streaming</span></div>
-              <div class="audit-stream" id="auditStream"></div>
-            </article>
-          </div>
+        <section class="page" id="page-packet-capture" data-page="packet-capture">
+          <section class="content">
+            <div class="page-head"><div><span class="kicker">Packet Capture</span><h2>Packet capture</h2></div><input id="packetSearch" class="search" placeholder="Search timestamp, verdict, event" /></div>
+            <div class="panel table-panel"><table><thead id="packetHead"></thead><tbody id="packetBody"></tbody></table></div>
+            <div id="packetDetail" class="detail-section"></div>
+          </section>
         </section>
 
-        <section class="section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Estate</span>
-              <h2>Assets and exposure</h2>
-            </div>
-          </div>
-          <div class="operations-grid">
-            <article class="panel">
-              <div class="panel-head"><h3>Critical assets</h3><span>risk ranked</span></div>
-              <div id="assetList" class="asset-list"></div>
-            </article>
-            <article class="panel">
-              <div class="panel-head"><h3>Vulnerability queue</h3><span>patch priority</span></div>
-              <div id="vulnerabilityList" class="vulnerability-list"></div>
-            </article>
-            <article class="panel">
-              <div class="panel-head"><h3>Assurance</h3><span>audit controls</span></div>
-              <div id="assuranceList" class="assurance-list"></div>
-            </article>
-          </div>
+        <section class="page" id="page-logs" data-page="logs">
+          <section class="content">
+            <div class="page-head"><div><span class="kicker">Logs</span><h2>Log history</h2></div><input id="logSearch" class="search" placeholder="Search timestamp, verdict, event" /></div>
+            <div class="panel table-panel"><table><thead id="logHead"></thead><tbody id="logBody"></tbody></table></div>
+            <div id="logDetail" class="detail-section"></div>
+          </section>
         </section>
 
-        <section id="investigation" class="section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Investigation</span>
-              <h2>Packets, logs, files</h2>
-            </div>
-            <input id="tableSearch" class="search" placeholder="Search IP, attack, CVE, technique" />
-          </div>
-          <div class="tabs" role="tablist">
-            <button class="tab active" data-table="packets">Packets</button>
-            <button class="tab" data-table="logs">Logs</button>
-            <button class="tab" data-table="files">Files</button>
-            <button class="tab" data-table="intel">Threat intel</button>
-          </div>
-          <div class="investigation-grid">
-            <div class="panel table-panel">
-              <table>
-                <thead id="tableHead"></thead>
-                <tbody id="tableBody"></tbody>
-              </table>
-            </div>
-            <aside class="panel detail-panel">
-              <div class="panel-head"><h3>Selected evidence</h3><span id="detailState">live case</span></div>
-              <div id="detailView" class="detail-view"></div>
-              <div class="detail-actions">
-                <button id="markEvidence" class="text-button">Mark reviewed</button>
-                <button id="promoteEvidence" class="primary-action compact">Promote to case</button>
-              </div>
-            </aside>
-          </div>
+        <section class="page" id="page-files" data-page="files">
+          <section class="content">
+            <div class="page-head"><div><span class="kicker">Files</span><h2>File history</h2></div><input id="fileSearch" class="search" placeholder="Search file event or location" /></div>
+            <div class="panel table-panel"><table><thead id="fileHead"></thead><tbody id="fileBody"></tbody></table></div>
+            <div id="fileDetail" class="detail-section"></div>
+          </section>
         </section>
 
-        <section id="response" class="section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Response</span>
-              <h2>Proxy and containment</h2>
+        <section class="page" id="page-behaviour" data-page="behaviour">
+          <section class="content">
+            <div class="page-head"><div><span class="kicker">Behaviour</span><h2>User system behaviour</h2></div><span id="graphState" class="state-pill">Normal operations</span></div>
+            <div class="panel graph-panel">
+              <canvas id="behaviourGraph"></canvas>
+              <div class="graph-legend"><span><i class="dot normal"></i>normal edge</span><span><i class="dot alert"></i>suspicious edge</span></div>
             </div>
-            <div class="response-actions">
-              <button id="simulateIncident" class="text-button">Inject signal</button>
-              <button id="runPlaybook" class="primary-action compact">Run playbook</button>
-            </div>
-          </div>
-          <div class="response-grid">
-            <article class="panel proxy-panel">
-              <div class="panel-head"><h3>Proxy decisions</h3><span>Allowlist and blacklist</span></div>
-              <div id="proxyList" class="proxy-list"></div>
-            </article>
-            <article class="panel playbook-panel">
-              <div class="panel-head"><h3>Containment queue</h3><span id="playbookState">3 actions pre-approved</span></div>
-              <div id="playbookList" class="playbook-list"></div>
-            </article>
-          </div>
+          </section>
         </section>
 
-        <section id="assistant" class="section assistant-section">
-          <div class="section-head">
-            <div>
-              <span class="section-kicker">Analyst</span>
-              <h2>Incident copilot</h2>
+        <section class="page" id="page-proxy" data-page="proxy">
+          <section class="content">
+            <div class="page-head">
+              <div><span class="kicker">Proxy</span><h2>Proxy policy</h2></div>
+              <button id="addProxyButton" class="primary-action">+ Add blocked IP</button>
             </div>
-          </div>
-          <div class="assistant-layout">
-            <div id="chatLog" class="chat-log"></div>
-            <form id="chatForm" class="chat-form">
-              <input id="chatInput" placeholder="Ask about lateral movement, CVE priority, or next response" />
-              <button class="primary-action compact">Send</button>
+            <form id="proxyForm" class="panel add-proxy">
+              <input id="proxyIp" placeholder="IP address" />
+              <input id="proxyReason" placeholder="Reason" />
+              <button class="primary-action">Block IP</button>
             </form>
-          </div>
+            <div id="proxyList" class="proxy-list"></div>
+          </section>
+        </section>
+
+        <section class="page" id="page-profile" data-page="profile">
+          <section class="content profile-page">
+            <div class="page-head"><div><span class="kicker">Profile</span><h2>User profile</h2></div><span id="oauthState" class="state-pill">Sign in required</span></div>
+            <div id="oauthPanel" class="panel oauth-panel">
+              <h3>Sign in</h3>
+              <p>Connect your operator identity to access collector pairing and organization controls.</p>
+              <button id="googleLogin" class="google-button">Sign in with Google</button>
+              <div class="divider"><span>or</span></div>
+              <div class="manual-login">
+                <input id="manualUsername" placeholder="Username" />
+                <input id="manualPassword" type="password" placeholder="Password" />
+                <button id="manualLogin" class="primary-action">Sign in</button>
+              </div>
+            </div>
+            <div id="profileData" class="profile-data"></div>
+          </section>
         </section>
       </main>
     </div>
 
-    <script type="module" src="./src/app.js?v=5"></script>
+    <section id="chatWidget" class="chat-widget">
+      <button id="chatToggle" class="chat-toggle">Analyst</button>
+      <div id="chatPanel" class="chat-panel">
+        <div id="chatLog" class="chat-log"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" placeholder="Ask about current posture" />
+          <button>Send</button>
+        </form>
+      </div>
+    </section>
+
+    <script type="module" src="/src/app.js?v=8"></script>
   </body>
 </html>
