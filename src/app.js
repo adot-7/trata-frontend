@@ -311,7 +311,9 @@ function renderRealtime() {
 
 function renderTable(kind, rows, bodyId, headId, query = "") {
   const columns = kind === "files"
-    ? ["Timestamp", "Verdict", "Event", "Packets", "File location"]
+    ? ["Timestamp", "Verdict", "Event", "File Size", "File location"]
+    : kind === "logs"
+    ? ["Timestamp", "Verdict", "Event", "Log Count"]
     : ["Timestamp", "Verdict", "Event", "Packets"];
   const filtered = rows.filter((row) => Object.values(row).join(" ").toLowerCase().includes(query.toLowerCase()));
   $(`#${headId}`).innerHTML = `<tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr>`;
@@ -320,7 +322,7 @@ function renderTable(kind, rows, bodyId, headId, query = "") {
       <td>${row.timestamp}</td>
       <td>${badge(row.verdict)}</td>
       <td>${row.event}</td>
-      <td>${row.packets}</td>
+      <td>${kind === "files" ? row.size : row.packets}</td>
       ${kind === "files" ? `<td>${row.location}</td>` : ""}
     </tr>
   `).join("");
