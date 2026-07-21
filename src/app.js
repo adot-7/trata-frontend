@@ -373,9 +373,15 @@ function renderProxy() {
 }
 
 function renderProfile() {
-  $("#profileInitials").textContent = profile.name.split(" ").map((part) => part[0]).join("");
-  $("#profileNameMini").textContent = profile.name;
-  $("#profileRoleMini").textContent = profile.role;
+  if (!state.loggedIn) {
+    $("#profileInitials").textContent = "NA";
+    $("#profileNameMini").textContent = "Not Connected";
+    $("#profileRoleMini").textContent = "Sign in required";
+  } else {
+    $("#profileInitials").textContent = profile.name.split(" ").map((part) => part[0]).join("");
+    $("#profileNameMini").textContent = profile.name;
+    $("#profileRoleMini").textContent = profile.role;
+  }
   $("#oauthState").textContent = state.loggedIn ? "Connected" : "Sign in required";
   $("#oauthPanel").style.display = state.loggedIn ? "none" : "grid";
   const maskedKey = state.keyVisible ? profile.apiKey : "••••••••••••••••••••••••";
@@ -391,6 +397,8 @@ function renderProfile() {
     </div>
   ` : "";
 }
+
+
 
 // 5 Hardcoded Sequential Questions & Answers for the Analyst Chatbot
 const sequentialAnswers = [
