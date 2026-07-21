@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#081426" />
+    <meta name="google-signin-client_id" content="667539636431-im6uicpgbjpon632vpp2osjc8pg6t1lg.apps.googleusercontent.com" />
     <title>TRATA | Threat Response and Tactical Assessment</title>
     <script>
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
@@ -22,13 +23,23 @@
       </div>
     </div>
 
+    <!-- Connection Loading State Overlay -->
+    <div id="connectionLoader" class="loader" style="opacity: 0; visibility: hidden; z-index: 2000;">
+      <div class="loader-grid"></div>
+      <div class="loader-core" style="width: 280px; height: 280px;">
+        <span></span>
+        <strong>CONNECTING</strong>
+        <small style="max-width: 210px; margin-top: -60px;">Waiting for local application initiating for connection...</small>
+      </div>
+    </div>
+
     <div class="global-hero-bg"><canvas id="heroGraph"></canvas></div>
 
     <div class="app">
       <aside class="sidebar">
         <a class="brand" href="#home" data-route="home">
           <span class="brand-mark"><img src="/public/logo.png" alt="TRATA logo" /></span>
-          <span><b>TRATA</b><br><small>त्राता Cyber Resilience</small></span>
+          <span><b>TRATA</b><br /><small>Cyber Resilience</small></span>
         </a>
         <nav class="nav">
           <a href="#dashboard" data-route="dashboard">Dashboard</a>
@@ -41,8 +52,8 @@
         <div class="sidebar-footer">
           <div class="status-line"><span class="pulse"></span><span>Operational fabric active</span></div>
           <a class="profile-card" href="#profile" data-route="profile">
-            <span class="avatar" id="profileInitials">AM</span>
-            <span><b id="profileNameMini">Aarav Menon</b><small id="profileRoleMini">Incident Commander</small></span>
+            <span class="avatar" id="profileInitials">AG</span>
+            <span><b id="profileNameMini">Arnesh Kumar Gupta</b><small id="profileRoleMini">Developer</small></span>
           </a>
         </div>
       </aside>
@@ -54,6 +65,12 @@
               <span class="kicker">Threat Response and Tactical Assessment</span>
               <h1>Cyber resilience command console for critical infrastructure.</h1>
               <p>Correlated endpoint, packet, log, file, CVE, and proxy intelligence for critical infrastructure operations.</p>
+              
+              <div class="panel oauth-panel" style="margin-top: 24px; max-width: 420px;">
+                <h3>Operator Access</h3>
+                <p style="font-size: 0.88rem; margin-bottom: 12px;">Create an account to unlock live operational feeds and control matrix.</p>
+                <button id="homeGoogleLogin" class="google-button">Create Account</button>
+              </div>
             </div>
             <div class="hero-panel">
               <div class="ring"><b id="heroScore">88</b><small>Resilience score</small></div>
@@ -144,14 +161,14 @@
           <section class="content profile-page">
             <div class="page-head"><div><span class="kicker">Profile</span><h2>User profile</h2></div><span id="oauthState" class="state-pill">Sign in required</span></div>
             <div id="oauthPanel" class="panel oauth-panel">
-              <h3>Sign in</h3>
+              <h3>Create Account</h3>
               <p>Connect your operator identity to access collector pairing and organization controls.</p>
-              <button id="googleLogin" class="google-button">Sign in with Google</button>
+              <button id="googleLogin" class="google-button">Create Account</button>
               <div class="divider"><span>or</span></div>
               <div class="manual-login">
                 <input id="manualUsername" placeholder="Username" />
                 <input id="manualPassword" type="password" placeholder="Password" />
-                <button id="manualLogin" class="primary-action">Sign in</button>
+                <button id="manualLogin" class="primary-action">Create Account</button>
               </div>
             </div>
             <div id="profileData" class="profile-data"></div>
@@ -172,6 +189,37 @@
         </form>
       </div>
     </section>
+
+    <!-- Details Collection Modal -->
+    <div id="detailsModal" class="auth-modal-overlay" style="display:none;">
+      <div class="auth-modal-card">
+        <h3>Enter Profile Details</h3>
+        <p>Please provide your operational details to proceed.</p>
+        <form id="detailsForm" class="auth-modal-form">
+          <input id="inputName" placeholder="Full Name" required />
+          <input id="inputEmail" type="email" placeholder="Email Address" required />
+          <input id="inputOrg" placeholder="Organization" required />
+          <input id="inputRole" placeholder="Role / Designation" required />
+          <button type="submit" class="primary-action">Submit & Continue</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- API Key Generation Modal -->
+    <div id="apiKeyModal" class="auth-modal-overlay" style="display:none;">
+      <div class="auth-modal-card">
+        <h3>Generate API Key</h3>
+        <p>Generate your secure session access key for collector pairing.</p>
+        <div class="api-key-box">
+          <code id="generatedApiKeyDisplay">Click generate to create key</code>
+        </div>
+        <div class="modal-actions">
+          <button id="triggerGenKey" class="text-button">Generate key</button>
+          <button id="copyGenKey" class="text-button" style="display:none;">Copy key</button>
+          <button id="finishApiKey" class="primary-action" disabled>Done & Enter Console</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="/src/app.js?v=8"></script>
   </body>

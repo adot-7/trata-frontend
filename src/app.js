@@ -2,16 +2,16 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 const profile = {
-  name: "Aarav Menon",
-  role: "Incident Commander",
+  name: "Arnesh Kumar Gupta",
+  role: "Developer",
   organization: "National Grid Operations Centre",
   team: "SOC Response Cell",
-  email: "aarav.menon@ngoc.gov.in",
+  email: "arnesh.menon@ngoc.gov.in",
   device: "NGOC-SOC-EDGE-07",
   apiKey: "trata_live_8K9X_Q2N4_P7RM"
 };
 
-const GOOGLE_CLIENT_ID = "";
+const GOOGLE_CLIENT_ID = "667539636431-im6uicpgbjpon632vpp2osjc8pg6t1lg.apps.googleusercontent.com";
 const LOCAL_USERNAME = "trata.admin";
 const LOCAL_PASSWORD = "trata@2026";
 
@@ -44,10 +44,6 @@ function pad(value) {
 
 function displayTime(date) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function fileTime(date) {
-  return `${pad(date.getDate())}_${pad(date.getMonth() + 1)}_${String(date.getFullYear()).slice(2)}_${pad(date.getHours())}_${pad(date.getMinutes())}`;
 }
 
 function readableRealtimeTime(date) {
@@ -175,10 +171,18 @@ function badge(value) {
 
 function routeTo(route) {
   const cleanRoute = (route || "home").split("?")[0];
-  state.route = $(`[data-page="${cleanRoute}"]`) ? cleanRoute : "home";
+  const hasSession = sessionStorage.getItem("trataSessionActive") === "true";
+
+  if (cleanRoute !== "home" && !hasSession) {
+    history.replaceState(null, "", `#home`);
+    state.route = "home";
+  } else {
+    state.route = $(`[data-page="${cleanRoute}"]`) ? cleanRoute : "home";
+    history.replaceState(null, "", `#${state.route}`);
+  }
+
   $$(".page").forEach((page) => page.classList.toggle("active", page.dataset.page === state.route));
   $$(".nav a, .brand, .profile-card").forEach((link) => link.classList.toggle("active", link.dataset.route === state.route));
-  history.replaceState(null, "", `#${state.route}`);
   window.scrollTo(0, 0);
   if (state.route === "behaviour" && state.graphResize) {
     requestAnimationFrame(state.graphResize);
@@ -216,7 +220,6 @@ function renderTraffic() {
   const min = Math.min(...values.map((item) => item.packets));
   const range = Math.max(1, max - min);
 
-  // Inset horizontal bounds (8% to 92%) so endpoints never clip out of the card
   const leftBound = 8;
   const rightBound = 92;
 
@@ -371,7 +374,7 @@ function answer(message) {
   const text = message.toLowerCase();
   if (text.includes("proxy") || text.includes("block")) return state.suspicious ? "Block 198.51.100.42. It is tied to the new beacon pattern." : "No new block is suggested in the current one-hour window.";
   if (text.includes("packet")) return "Packet capture is normal across the last hour. The next 10-minute window is being watched for beacon cadence.";
-  if (text.includes("sign") || text.includes("login")) return "Open Profile and sign in with Google or your organization credentials.";
+  if (text.includes("sign") || text.includes("login") || text.includes("account")) return "Open Profile and create an account or sign in with your credentials.";
   return state.suspicious ? "Suspicious activity is active. Review Packet Capture, Logs, Behaviour, and Proxy." : "Current posture is normal across packet, log, file, and proxy telemetry.";
 }
 
@@ -463,44 +466,113 @@ function bindEvents() {
     state.proxy[Number(button.dataset.proxy)].status = button.dataset.status;
     renderProxy();
   });
-  $("#googleLogin").addEventListener("click", () => {
-    const clientId = GOOGLE_CLIENT_ID;
-    if (!clientId || clientId === "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com") {
-      $("#oauthState").textContent = "Google sign-in unavailable";
-      return;
-    }
-    if (window.google?.accounts?.id) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: () => completeLogin()
+
+  // Create Account triggers (Google OAuth trigger mock)
+  ["googleLogin", "homeGoogleLogin"].forEach((id) => {
+    const btn = $(`#${id}`);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        const clientId = GOOGLE_CLIENT_ID;
+        if (!clientId) return;
+
+        if (window.google?.accounts?.id) {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: (response) => {
+              sessionStorage.setItem("trataSessionActive", "true");
+              const oauthPanel = $("#oauthPanel");
+              if (oauthPanel) oauthPanel.style.display = "none";
+              $("#detailsModal").style.display = "grid";
+            }
+          });
+          
+          try {
+            window.google.accounts.id.prompt((notification) => {
+              if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                sessionStorage.setItem("trataSessionActive", "true");
+                $("#detailsModal").style.display = "grid";
+              }
+            });
+          } catch (e) {
+            sessionStorage.setItem("trataSessionActive", "true");
+            $("#detailsModal").style.display = "grid";
+          }
+          return;
+        }
+
+        sessionStorage.setItem("trataSessionActive", "true");
+        $("#detailsModal").style.display = "grid";
       });
-      window.google.accounts.id.prompt();
-      $("#oauthState").textContent = "Google sign-in opened";
-      return;
     }
-    sessionStorage.setItem("trataOAuthRequest", new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: location.origin + location.pathname,
-      response_type: "id_token",
-      scope: "openid profile email"
-    }).toString());
-    $("#oauthState").textContent = "Google sign-in loading";
   });
+
+  // Handle Details Submission
+  $("#detailsForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    profile.name = $("#inputName").value.trim();
+    profile.email = $("#inputEmail").value.trim();
+    profile.organization = $("#inputOrg").value.trim();
+    profile.role = $("#inputRole").value.trim();
+
+    $("#detailsModal").style.display = "none";
+    $("#apiKeyModal").style.display = "grid";
+  });
+
+  // Handle API Key Generation
+  let tempGeneratedKey = "";
+  $("#triggerGenKey").addEventListener("click", () => {
+    const randomBytes = crypto.getRandomValues(new Uint32Array(3));
+    tempGeneratedKey = `trata_live_${[...randomBytes].map((n) => n.toString(36).slice(0, 4).toUpperCase()).join("_")}`;
+    $("#generatedApiKeyDisplay").textContent = tempGeneratedKey;
+    $("#copyGenKey").style.display = "inline-flex";
+    $("#finishApiKey").removeAttribute("disabled");
+  });
+
+  $("#copyGenKey").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(tempGeneratedKey);
+    $("#copyGenKey").textContent = "Copied!";
+    setTimeout(() => { $("#copyGenKey").textContent = "Copy key"; }, 1200);
+  });
+
+  // 5-second connection waiting loader sequence after clicking Done & Enter Console
+  $("#finishApiKey").addEventListener("click", () => {
+    profile.apiKey = tempGeneratedKey;
+    state.loggedIn = true;
+    localStorage.setItem("trataOAuth", "connected");
+    $("#apiKeyModal").style.display = "none";
+
+    // Show connection loading screen
+    const connLoader = $("#connectionLoader");
+    if (connLoader) {
+      connLoader.style.opacity = "1";
+      connLoader.style.visibility = "visible";
+    }
+
+    // Wait 5 seconds, then hide loader, render profile, and transition to dashboard
+    setTimeout(() => {
+      if (connLoader) {
+        connLoader.style.opacity = "0";
+        connLoader.style.visibility = "hidden";
+      }
+      renderProfile();
+      routeTo("dashboard");
+    }, 5000);
+  });
+
   $("#manualLogin").addEventListener("click", (event) => {
     event.preventDefault();
     const username = $("#manualUsername").value.trim();
     const password = $("#manualPassword").value;
     if (username !== LOCAL_USERNAME || password !== LOCAL_PASSWORD) {
-      $("#oauthState").textContent = "Invalid credentials";
       return;
     }
     completeLogin();
   });
 
   function completeLogin() {
+    sessionStorage.setItem("trataSessionActive", "true");
     localStorage.setItem("trataOAuth", "connected");
     state.loggedIn = true;
-    $("#oauthState").textContent = "Connected";
     renderProfile();
     history.replaceState(null, "", `#profile`);
   }
@@ -585,7 +657,7 @@ function startHeroCanvas() {
 function startBehaviourGraph() {
   const canvas = $("#behaviourGraph");
   const ctx = canvas.getContext("2d");
-  const labels = ["Aarav", "IDP", "Zeek", "Proxy", "Files", "DB-01", "OT-GW", "Edge-07", "Backup", "SOC", "DNS", "SharePoint", "FTP-client", "Gateway-DMZ", "directory"];
+  const labels = ["Arnesh", "IDP", "Zeek", "Proxy", "Files", "DB-01", "OT-GW", "Edge-07", "Backup", "SOC", "DNS", "SharePoint", "FTP-client", "Gateway-DMZ", "directory"];
   const clusters = [
     { name: "user", cx: 0.28, cy: 0.3, rx: 0.11, ry: 0.13, count: 10 },
     { name: "core", cx: 0.5, cy: 0.34, rx: 0.12, ry: 0.14, count: 12 },
