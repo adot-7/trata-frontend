@@ -149,19 +149,31 @@ body.dark .brand {
     #03060B;
 }
 .brand-mark, .avatar {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--ice), rgba(104, 225, 253, 0.75));
   color: #081426;
   font-weight: 900;
+  overflow: hidden;
 }
 .brand-mark {
-  font-size: 1.35rem;
-  font-family: Georgia, "Noto Serif Devanagari", serif;
+  font-size: 1.15rem;
+  font-family: Georgia, serif;
+  padding: 4px;
 }
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  object-fit: contain;
+};
+
 .brand b, .brand small, .profile-card b, .profile-card small { display: block; }
 .brand small, .profile-card small, .status-line { color: var(--sidebar-muted); }
 .kicker, .panel-head span, .score-card span, small { color: var(--muted); }
@@ -388,6 +400,7 @@ tbody tr:hover, tbody tr.selected { background: rgba(74, 116, 167, 0.16); }
   font-size: 0.78rem;
 }
 .badge.alert { background: var(--red); color: white; }
+.badge.suggested { background: var(--amber); color: #081426; }
 .detail-section {
   display: none;
   grid-template-columns: minmax(0, 1fr) 340px;

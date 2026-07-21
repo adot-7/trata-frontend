@@ -24,10 +24,10 @@ const state = {
   selected: { packets: 0, logs: 0, files: 0 },
   graphResize: null,
   proxy: [
-    { ip: "10.24.50.12", status: "Allowed", reason: "Signed backup replication endpoint", suggested: false },
-    { ip: "103.27.9.44", status: "Allowed", reason: "Mutual TLS partner endpoint", suggested: false },
-    { ip: "185.199.108.153", status: "Blocked", reason: "Historical C2 indicator, retained policy", suggested: false },
-    { ip: "45.83.64.21", status: "Blocked", reason: "Historical reconnaissance source", suggested: false }
+    { ip: "10.24.50.12", domain: "bkp-storage-node.net", description: "Secure replication target", attacks: 0, timestamp: "18/06/26 04:10", status: "Allowed", reason: "Signed backup replication endpoint", suggested: false },
+    { ip: "103.27.9.44", domain: "secure-gateway.partner.org", description: "Encrypted tunnel endpoint", attacks: 0, timestamp: "19/06/26 04:20", status: "Allowed", reason: "Mutual TLS partner endpoint", suggested: false },
+    { ip: "185.199.108.153", domain: "legacy-c2-drop.net", description: "Flagged command anomaly", attacks: 2, timestamp: "20/06/26 05:10", status: "Blocked", reason: "Historical C2 indicator, retained policy", suggested: false },
+    { ip: "45.83.64.21", domain: "scanner-probe.net", description: "External port scan source", attacks: 0, timestamp: "20/06/26 04:40", status: "Blocked", reason: "Historical reconnaissance source", suggested: false }
   ]
 };
 
@@ -48,6 +48,10 @@ function displayTime(date) {
 
 function fileTime(date) {
   return `${pad(date.getDate())}_${pad(date.getMonth() + 1)}_${String(date.getFullYear()).slice(2)}_${pad(date.getHours())}_${pad(date.getMinutes())}`;
+}
+
+function readableRealtimeTime(date) {
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${String(date.getFullYear()).slice(2)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 const endTime = floorToTen(new Date());
@@ -149,8 +153,24 @@ function suspiciousLog() {
   };
 }
 
+function suspiciousFile() {
+  return {
+    timestamp: displayTime(nextSuspiciousTime),
+    verdict: "Suspicious",
+    event: "Exploit payload staged",
+    packets: 244,
+    location: "/tmp/exploit_loader.exe",
+    parentProcess: "powershell.exe",
+    size: "418 KB",
+    yara: "YARA: exploit_loader_dropper",
+    executable: "Yes",
+    running: "Yes",
+    intel: "Unsigned executable staged after encoded command execution. Likely follow-on payload for beacon establishment."
+  };
+}
+
 function badge(value) {
-  return `<span class="badge ${value === "Suspicious" ? "alert" : ""}">${value}</span>`;
+  return `<span class="badge ${value === "Suspicious" || value === "Blocked" ? "alert" : value === "Suggested" ? "suggested" : ""}">${value}</span>`;
 }
 
 function routeTo(route) {
@@ -166,57 +186,103 @@ function routeTo(route) {
 }
 
 function renderTraffic() {
-  const values = timeline.map((time, index) => ({
-    time: displayTime(time),
-    packets: packets[index]?.packets || 220,
-    sessions: 52 + index * 4,
-    files: 11 + index,
-    verdict: packets[index]?.verdict || "Normal",
-    event: packets[index]?.event || "Normal operations"
-  }));
+  const jaggedOffsets = [0, 35, -20, 45, -15, 25, -30, 40];
+  
+  const values = timeline.map((time, index) => {
+    const basePackets = packets[index]?.packets || 220;
+    const jaggedPackets = Math.max(120, basePackets + (jaggedOffsets[index % jaggedOffsets.length]));
+    return {
+      time: displayTime(time),
+      packets: jaggedPackets,
+      sessions: 52 + (index * 7) % 25,
+      files: 11 + index,
+      verdict: packets[index]?.verdict || "Normal",
+      event: packets[index]?.event || "Normal operations"
+    };
+  });
+  
   if (state.suspicious) {
     values.push({
       time: displayTime(nextSuspiciousTime),
-      packets: 287,
-      sessions: 81,
+      packets: 310,
+      sessions: 88,
       files: 19,
       verdict: "Suspicious",
       event: "Outbound beacon pattern"
     });
   }
+
   const max = Math.max(...values.map((item) => item.packets));
+  const min = Math.min(...values.map((item) => item.packets));
+  const range = Math.max(1, max - min);
+
+  // Inset horizontal bounds (8% to 92%) so endpoints never clip out of the card
+  const leftBound = 8;
+  const rightBound = 92;
+
   const points = values.map((item, index) => {
-    const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100;
-    const y = 100 - (item.packets / max) * 86;
+    const x = values.length === 1 
+      ? 50 
+      : leftBound + (index / (values.length - 1)) * (rightBound - leftBound);
+    const y = 18 + ((max - item.packets) / range) * 60;
     return { ...item, x, y };
   });
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+
+  const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+  const areaPoints = `${points[0].x},88 ${polylinePoints} ${points[points.length - 1].x},88`;
+  
+  const normalPoints = state.suspicious ? points.slice(0, -1) : points;
+  const normalPolyline = normalPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const attackPoints = state.suspicious ? points.slice(-2) : [];
+  const attackPolyline = attackPoints.map((p) => `${p.x},${p.y}`).join(" ");
+
   $("#trafficChart").innerHTML = `
-    <svg class="traffic-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points="${polyline}" fill="none" stroke="#4A74A7" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
-      <polyline points="${polyline}" fill="none" stroke="#68E1FD" stroke-width="0.8" opacity="0.75" vector-effect="non-scaling-stroke"></polyline>
+    <svg class="traffic-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position:absolute; inset:0; width:100%; height:100%; overflow:visible;">
+      <defs>
+        <linearGradient id="trafficAreaGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${state.suspicious ? "#FF6B6B" : "#68E1FD"}" stop-opacity="0.3"></stop>
+          <stop offset="100%" stop-color="${state.suspicious ? "#FF6B6B" : "#68E1FD"}" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <polygon points="${areaPoints}" fill="url(#trafficAreaGradient)"></polygon>
+      <polyline points="${normalPolyline}" fill="none" stroke="#68E1FD" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+      ${state.suspicious ? `<polyline points="${attackPolyline}" fill="none" stroke="#FF6B6B" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>` : ""}
     </svg>
     ${points.map((point) => `
-      <button class="traffic-point ${point.verdict === "Suspicious" ? "alert" : ""}" style="left:${point.x}%; bottom:${100 - point.y}%">
+      <button class="traffic-point ${point.verdict === "Suspicious" ? "alert" : ""}" style="left:${point.x}%; top:${point.y}%; transform:translate(-50%, -50%); ${point.verdict === "Suspicious" ? "animation:pulse 1.15s infinite; box-shadow:0 0 0 6px rgba(255,107,107,0.25), 0 0 14px rgba(255,107,107,0.5);" : ""}" aria-label="${point.time}">
         <span class="tooltip"><b>${point.time}</b><br>${point.packets} packets, ${point.sessions} sessions<br>${point.event}</span>
       </button>
-      <span class="traffic-label" style="left:${point.x}%">${point.time}</span>
+      <span class="traffic-label" style="left:${point.x}%; transform:translateX(-50%); bottom:10px;">${point.time}</span>
     `).join("")}
   `;
 }
 
 function renderRealtime() {
+  const fallbackRealtimeFiles = [
+    "policy.json",
+    "state.db",
+    "auth.dll",
+    "hourly.tar",
+    "backup.yml",
+    "ngoc.pem",
+    "service.toml",
+    "current.sig",
+    "ioc-cache.db",
+    "quarantine.idx",
+    "allowlist.yml",
+    "health.json"
+  ];
   const items = timeline.flatMap((time) => [
-    `${fileTime(time)}.log`,
-    `${fileTime(time)}.pcap`,
-    `collector_${fileTime(time)}.json`
+    `traffic_capture_${readableRealtimeTime(time)}.pcap`,
+    `security_log_${readableRealtimeTime(time)}.log`,
+    files.find((item) => item.timestamp === displayTime(time))?.location.split("/").pop() || fallbackRealtimeFiles[timeline.indexOf(time) % fallbackRealtimeFiles.length]
   ]);
   if (state.suspicious) {
-    items.unshift(`${fileTime(nextSuspiciousTime)}.log`, `${fileTime(nextSuspiciousTime)}.pcap`, "file.exe");
+    items.unshift("file.exe", `security_log_${readableRealtimeTime(nextSuspiciousTime)}.log`, `traffic_capture_${readableRealtimeTime(nextSuspiciousTime)}.pcap`);
   }
   $("#realtimeData").innerHTML = items.map((item, index) => `
     <div class="data-item ${state.suspicious && index < 3 ? "alert" : ""}">
-      <b>${item}</b><span>${index < 3 && state.suspicious ? "new" : "indexed"}</span>
+      <b>${item}</b><span>${index < 3 && state.suspicious ? "new" : ""}</span>
     </div>
   `).join("");
 }
@@ -271,8 +337,8 @@ function renderProxy() {
   $("#proxyCount").textContent = state.proxy.filter((item) => item.status === "Blocked").length;
   $("#proxyList").innerHTML = state.proxy.map((item, index) => `
     <article class="panel proxy-row">
-      <header><b>${item.ip}</b>${badge(item.status === "Blocked" ? "Suspicious" : "Normal")}</header>
-      <small>${item.reason}${item.suggested ? " | suggested from recent suspicious activity" : ""}</small>
+      <header><b>${item.ip}</b>${badge(item.suggested ? "Suggested" : item.status === "Blocked" ? "Blocked" : "Normal")}</header>
+      <small>${item.domain || item.ip} | ${item.description || item.reason} | number of attacks : ${item.attacks ?? 0} | timestamp : ${item.timestamp || "20/07/26 00:00"}${item.suggested ? " | suggested from recent suspicious activity" : ""}</small>
       <div class="proxy-actions">
         <button class="text-button" data-proxy="${index}" data-status="Allowed">Allow</button>
         <button class="text-button" data-proxy="${index}" data-status="Blocked">Block</button>
@@ -322,7 +388,8 @@ function triggerSuspicious() {
   state.suspicious = true;
   packets.push(suspiciousPacket());
   logs.push(suspiciousLog());
-  state.proxy.unshift({ ip: "198.51.100.42", status: "Blocked", reason: "Suggested block from outbound beacon pattern", suggested: true });
+  files.push(suspiciousFile());
+  state.proxy.unshift({ ip: "198.51.100.42", domain: "beacon-relay.edgepath.net", description: "Suggested beacon relay", attacks: 1, timestamp: "20/07/26 05:20", status: "Blocked", reason: "Suggested block from outbound beacon pattern", suggested: true });
   $("#graphState").textContent = "Suspicious edge detected";
   renderAll();
   addChat("New suspicious 10-minute window detected. Suggested proxy block added for 198.51.100.42.");
@@ -518,20 +585,140 @@ function startHeroCanvas() {
 function startBehaviourGraph() {
   const canvas = $("#behaviourGraph");
   const ctx = canvas.getContext("2d");
-  const labels = ["Aarav", "IDP", "Zeek", "Proxy", "Files", "DB-01", "OT-GW", "Edge-07", "Backup", "SOC", "DNS", "SharePoint"];
-  const nodes = Array.from({ length: 42 }, (_, index) => ({
-    label: labels[index] || `host-${String(index).padStart(2, "0")}`,
-    x: 0.12 + Math.random() * 0.76,
-    y: 0.12 + Math.random() * 0.76,
-    vx: (Math.random() - 0.5) * 0.001,
-    vy: (Math.random() - 0.5) * 0.001,
-    important: index < labels.length
-  }));
-  const edges = Array.from({ length: 96 }, (_, index) => [
-    index % nodes.length,
-    Math.floor((index * 7 + 5) % nodes.length),
-    0.35 + Math.random() * 0.65
-  ]);
+  const labels = ["Aarav", "IDP", "Zeek", "Proxy", "Files", "DB-01", "OT-GW", "Edge-07", "Backup", "SOC", "DNS", "SharePoint", "FTP-client", "Gateway-DMZ", "directory"];
+  const clusters = [
+    { name: "user", cx: 0.28, cy: 0.3, rx: 0.11, ry: 0.13, count: 10 },
+    { name: "core", cx: 0.5, cy: 0.34, rx: 0.12, ry: 0.14, count: 12 },
+    { name: "data", cx: 0.39, cy: 0.69, rx: 0.12, ry: 0.11, count: 10 },
+    { name: "external", cx: 0.7, cy: 0.63, rx: 0.13, ry: 0.12, count: 10 }
+  ];
+  const importantClusterByIndex = {
+    0: "user",
+    1: "core",
+    2: "core",
+    3: "core",
+    4: "data",
+    5: "data",
+    6: "core",
+    7: "core",
+    8: "data",
+    9: "external",
+    10: "external",
+    11: "external",
+    12: "user",
+    13: "core",
+    14: "core"
+  };
+  const clusterOffsets = {
+    user: [
+      [-0.36, -0.08], [-0.08, -0.34], [0.16, -0.06], [-0.2, 0.18],
+      [0.1, 0.22], [0.34, 0.12], [-0.34, 0.3], [0.26, -0.28],
+      [0.38, 0.32], [-0.1, 0.38]
+    ],
+    core: [
+      [-0.32, -0.18], [-0.08, -0.34], [0.15, -0.24], [0.34, -0.08],
+      [-0.28, 0.08], [0.02, 0.04], [0.28, 0.12], [-0.18, 0.28],
+      [0.14, 0.3], [0.4, 0.28], [-0.42, 0.32], [0.02, -0.02]
+    ],
+    data: [
+      [-0.34, -0.16], [-0.08, -0.26], [0.18, -0.12], [0.38, 0.04],
+      [-0.24, 0.12], [0.02, 0.16], [0.24, 0.22], [-0.38, 0.28],
+      [0.06, 0.34], [0.34, 0.34]
+    ],
+    external: [
+      [-0.34, -0.2], [-0.06, -0.28], [0.22, -0.12], [0.4, 0.02],
+      [-0.22, 0.12], [0.06, 0.12], [0.28, 0.2], [-0.34, 0.3],
+      [0.04, 0.36], [0.34, 0.32]
+    ]
+  };
+  const clusterCounts = { user: 0, core: 0, data: 0, external: 0 };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const jitter = (scale) => (Math.random() - 0.5) * scale;
+  const placeNode = (clusterName, ordinal) => {
+    const cluster = clusters.find((item) => item.name === clusterName);
+    const offset = clusterOffsets[clusterName][ordinal % clusterOffsets[clusterName].length];
+    return {
+      x: clamp(cluster.cx + offset[0] * cluster.rx + jitter(0.012), 0.08, 0.92),
+      y: clamp(cluster.cy + offset[1] * cluster.ry + jitter(0.012), 0.09, 0.91)
+    };
+  };
+  const nodes = Array.from({ length: 42 }, (_, index) => {
+    const clusterName = importantClusterByIndex[index] || clusters.find((cluster, clusterIndex) => index < clusters.slice(0, clusterIndex + 1).reduce((sum, item) => sum + item.count, 0)).name;
+    const ordinal = clusterCounts[clusterName]++;
+    const placed = placeNode(clusterName, ordinal);
+    return {
+      label: labels[index] || `host-${String(index).padStart(2, "0")}`,
+      x: placed.x,
+      y: placed.y,
+      baseX: placed.x,
+      baseY: placed.y,
+      vx: (Math.random() - 0.5) * 0.001,
+      vy: (Math.random() - 0.5) * 0.001,
+      important: index < labels.length,
+      cluster: clusterName,
+      orbit: ordinal,
+      phase: Math.random() * Math.PI * 2
+    };
+  });
+  const edgeList = [];
+  const edgeSet = new Set();
+  const addEdge = (a, b, weight) => {
+    if (a === b) return;
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (edgeSet.has(key)) return;
+    edgeSet.add(key);
+    edgeList.push([a, b, weight]);
+  };
+  const clusterMembers = {
+    user: nodes.map((_, index) => index).filter((index) => nodes[index].cluster === "user"),
+    core: nodes.map((_, index) => index).filter((index) => nodes[index].cluster === "core"),
+    data: nodes.map((_, index) => index).filter((index) => nodes[index].cluster === "data"),
+    external: nodes.map((_, index) => index).filter((index) => nodes[index].cluster === "external")
+  };
+  const hubMap = { user: 0, core: 3, data: 5, external: 9 };
+  Object.entries(clusterMembers).forEach(([clusterName, members]) => {
+    const hub = hubMap[clusterName];
+    members.forEach((member, memberIndex) => {
+      if (member !== hub) addEdge(hub, member, 0.5 + (memberIndex % 4) * 0.1);
+    });
+    for (let index = 0; index < members.length - 1; index++) {
+      addEdge(members[index], members[index + 1], 0.38 + (index % 3) * 0.08);
+    }
+    for (let index = 0; index < members.length - 3; index += 2) {
+      addEdge(members[index], members[index + 3], 0.36 + (index % 2) * 0.06);
+    }
+  });
+  [
+    [0, 1, 0.92], [0, 7, 0.84], [1, 3, 0.96], [1, 9, 0.72], [1, 10, 0.7],
+    [2, 3, 0.88], [2, 5, 0.74], [2, 9, 0.78], [3, 6, 0.95], [3, 7, 0.93],
+    [3, 10, 0.8], [4, 5, 0.94], [4, 8, 0.82], [5, 8, 0.91], [6, 7, 0.9],
+    [6, 5, 0.76], [6, 10, 0.72], [7, 5, 0.82], [7, 9, 0.86], [9, 10, 0.84],
+    [9, 11, 0.82], [10, 11, 0.72], [11, 3, 0.68], [8, 9, 0.64], [5, 9, 0.62],
+    [6, 9, 0.66], [1, 5, 0.74], [3, 4, 0.7], [7, 11, 0.64], [2, 10, 0.62]
+  ].forEach(([a, b, weight]) => addEdge(a, b, weight));
+  const fillToTarget = (membersA, membersB, weightBase) => {
+    let cursor = 0;
+    while (edgeList.length < 96 && cursor < 200) {
+      const a = membersA[cursor % membersA.length];
+      const b = membersB[(cursor * 3 + 2) % membersB.length];
+      addEdge(a, b, weightBase + ((cursor % 4) * 0.05));
+      cursor++;
+    }
+  };
+  fillToTarget(clusterMembers.user, clusterMembers.core, 0.44);
+  fillToTarget(clusterMembers.core, clusterMembers.data, 0.46);
+  fillToTarget(clusterMembers.core, clusterMembers.external, 0.48);
+  fillToTarget(clusterMembers.data, clusterMembers.external, 0.42);
+  const edges = edgeList.slice(0, 96);
+  const attackPathEdges = {
+    7: [12, 13, 0.97],
+    29: [13, 7, 0.99],
+    58: [7, 14, 0.95]
+  };
+  Object.entries(attackPathEdges).forEach(([index, edge]) => {
+    edges[Number(index)] = edge;
+  });
+  const attackNodeSet = new Set([12, 13, 7, 14]);
   let tick = 0;
   function size() {
     const box = canvas.getBoundingClientRect();
@@ -545,48 +732,134 @@ function startBehaviourGraph() {
   function draw() {
     const width = canvas.width / Math.min(devicePixelRatio || 1, 2);
     const height = canvas.height / Math.min(devicePixelRatio || 1, 2);
+    const minX = 0.09;
+    const maxX = 0.91;
+    const minY = 0.11;
+    const maxY = 0.89;
     tick += 0.01;
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--chart-bg").trim() || "#03060B";
     ctx.fillRect(0, 0, width, height);
-    nodes.forEach((node) => {
-      node.x += node.vx + Math.sin(tick + node.y * 6) * 0.00012;
-      node.y += node.vy + Math.cos(tick + node.x * 6) * 0.00012;
-      if (node.x < 0.04 || node.x > 0.96) node.vx *= -1;
-      if (node.y < 0.06 || node.y > 0.94) node.vy *= -1;
+    const clusterGlow = [
+      [0.18, 0.28, 170, "rgba(104, 225, 253, 0.045)"],
+      [0.49, 0.32, 180, "rgba(74, 116, 167, 0.05)"],
+      [0.34, 0.72, 160, "rgba(88, 214, 141, 0.045)"],
+      [0.76, 0.66, 170, "rgba(246, 200, 95, 0.04)"]
+    ];
+    clusterGlow.forEach(([x, y, radius, color]) => {
+      const gradient = ctx.createRadialGradient(x * width, y * height, 0, x * width, y * height, radius);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x * width, y * height, radius, 0, Math.PI * 2);
+      ctx.fill();
     });
+    nodes.forEach((node) => {
+      const swayX = Math.sin(tick + node.y * 6 + node.phase) * 0.0008;
+      const swayY = Math.cos(tick + node.x * 6 + node.phase) * 0.0008;
+      node.x += node.vx + swayX;
+      node.y += node.vy + swayY;
+      if (node.x < minX) {
+        node.x = minX;
+        node.vx = Math.abs(node.vx);
+      }
+      if (node.x > maxX) {
+        node.x = maxX;
+        node.vx = -Math.abs(node.vx);
+      }
+      if (node.y < minY) {
+        node.y = minY;
+        node.vy = Math.abs(node.vy);
+      }
+      if (node.y > maxY) {
+        node.y = maxY;
+        node.vy = -Math.abs(node.vy);
+      }
+    });
+    const attackPulse = (Math.sin(tick * 6) + 1) / 2;
     edges.forEach(([a, b, weight], index) => {
       const from = nodes[a];
       const to = nodes[b];
       const alert = state.suspicious && (index === 7 || index === 29 || index === 58);
-      ctx.strokeStyle = alert ? "#FF6B6B" : "#58D68D";
-      ctx.globalAlpha = alert ? 0.95 : 0.12 + weight * 0.18;
-      ctx.lineWidth = alert ? 2.6 : 0.8 + weight;
+      ctx.strokeStyle = alert ? "#FF5F6D" : "#58D68D";
+      ctx.globalAlpha = alert ? 0.9 + attackPulse * 0.08 : state.suspicious ? 0.05 + weight * 0.1 : 0.12 + weight * 0.18;
+      ctx.lineWidth = alert ? 2.8 + attackPulse * 1.4 : 0.75 + weight;
+      if (alert) {
+        ctx.shadowColor = "rgba(255, 95, 109, 0.45)";
+        ctx.shadowBlur = 7 + attackPulse * 5;
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.beginPath();
       ctx.moveTo(from.x * width, from.y * height);
       ctx.lineTo(to.x * width, to.y * height);
       ctx.stroke();
       if (alert) {
-        const px = from.x * width + (to.x - from.x) * width * ((Math.sin(tick * 5) + 1) / 2);
-        const py = from.y * height + (to.y - from.y) * height * ((Math.sin(tick * 5) + 1) / 2);
-        ctx.fillStyle = "#FF6B6B";
+        const travel = ((tick * 0.78) + index * 0.19) % 1;
+        const px = from.x * width + (to.x - from.x) * width * travel;
+        const py = from.y * height + (to.y - from.y) * height * travel;
+        const gradient = ctx.createRadialGradient(px, py, 0, px, py, 10);
+        gradient.addColorStop(0, "rgba(255, 145, 145, 0.82)");
+        gradient.addColorStop(0.45, "rgba(255, 95, 109, 0.5)");
+        gradient.addColorStop(1, "rgba(255, 95, 109, 0)");
+        ctx.fillStyle = gradient;
         ctx.globalAlpha = 1;
         ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.arc(px, py, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#FFD7D7";
+        ctx.beginPath();
+        ctx.arc(px, py, 2.8 + attackPulse, 0, Math.PI * 2);
         ctx.fill();
       }
     });
+    ctx.shadowBlur = 0;
     nodes.forEach((node, index) => {
+      const x = node.x * width;
+      const y = node.y * height;
+      const compromised = state.suspicious && attackNodeSet.has(index);
+      const radius = compromised ? 7 : node.important ? 5 : 3;
+      if (node.important || compromised) {
+        const aura = ctx.createRadialGradient(x, y, 0, x, y, compromised ? 16 : 15);
+        aura.addColorStop(0, compromised ? "rgba(255, 95, 109, 0.32)" : "rgba(104, 225, 253, 0.35)");
+        aura.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(x, y, compromised ? 16 : 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
-      ctx.fillStyle = state.suspicious && index === 7 ? "#FF6B6B" : node.important ? "#68E1FD" : "#4A74A7";
+      ctx.fillStyle = compromised ? "#FF5F6D" : node.important ? "#68E1FD" : "#4A74A7";
+      ctx.strokeStyle = compromised ? "#FFD6D6" : "rgba(220, 234, 247, 0.78)";
+      ctx.lineWidth = compromised ? 1.6 + attackPulse * 0.6 : node.important ? 1.4 : 0;
       ctx.beginPath();
-      ctx.arc(node.x * width, node.y * height, state.suspicious && index === 7 ? 7 : node.important ? 5 : 3, 0, Math.PI * 2);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
+      if (node.important || compromised) ctx.stroke();
       if (node.important) {
-        ctx.font = "12px Inter, sans-serif";
+        ctx.font = "600 12px Inter, sans-serif";
+        const labelWidth = ctx.measureText(node.label).width;
+        const pillWidth = labelWidth + 14;
+        const pillHeight = 20;
+        const offsetX = x > width - 140 ? -(pillWidth + 12) : 12;
+        const offsetY = y < 30 ? 12 : -22;
+        const labelX = clamp(x + offsetX, 8, width - pillWidth - 8);
+        const labelY = clamp(y + offsetY, 8, height - pillHeight - 8);
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = "rgba(6, 12, 20, 0.82)";
+        ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.roundRect(labelX, labelY, pillWidth, pillHeight, 10);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = compromised ? "rgba(255, 95, 109, 0.7)" : "rgba(104, 225, 253, 0.26)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
         ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--text").trim() || "#F4F9FF";
-        ctx.globalAlpha = 0.82;
-        ctx.fillText(node.label, node.x * width + 8, node.y * height - 8);
+        ctx.textBaseline = "middle";
+        ctx.fillText(node.label, labelX + 7, labelY + pillHeight / 2 + 0.5);
       }
     });
     ctx.globalAlpha = 1;
